@@ -1128,6 +1128,9 @@ var AppComponent = React.createClass({
       app.api.user.destroySession();
       this.handleLogoutSuccess();
       return;
+    } else if (error.status === 404){
+       app.log('404 '+error);
+       return;
     } else {
       var body;
 
