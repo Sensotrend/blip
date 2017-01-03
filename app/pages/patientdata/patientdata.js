@@ -1,4 +1,3 @@
-/** @jsx React.DOM */
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -14,48 +13,61 @@
  * not, you can obtain one from Tidepool Project at tidepool.org.
  */
 
-var React = require('react');
-var _ = require('lodash');
-var moment = require('moment');
-var bows = require('bows');
-var sundial = require('sundial');
+import React from 'react';
+import { Link } from 'react-router';
+import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
 
-var config = require('../../config');
+import _ from 'lodash';
+import bows from 'bows';
+import sundial from 'sundial';
 
-var personUtils = require('../../core/personutils');
-var utils = require('../../core/utils');
-var Header = require('../../components/chart').header;
-var Daily = require('../../components/chart').daily;
-var Modal = require('../../components/chart').modal;
-var Weekly = require('../../components/chart').weekly;
-var Settings = require('../../components/chart').settings;
+import config from '../../config';
+import loadingGif from './loading.gif';
 
-var nurseShark = require('tideline/plugins/nurseshark/');
+import * as actions from '../../redux/actions';
 
-var Messages = require('../../components/messages');
+import personUtils from '../../core/personutils';
+import utils from '../../core/utils';
+import { URL_UPLOADER_CHROME_STORE, URL_BLIP_NOTES_APP_STORE } from '../../core/constants';
+import { header as Header } from '../../components/chart';
+import { basics as Basics } from '../../components/chart';
+import { daily as Daily } from '../../components/chart';
+import { modal as Modal } from '../../components/chart';
+import { weekly as Weekly } from '../../components/chart';
+import { settings as Settings } from '../../components/chart';
 
-var PatientData = React.createClass({
+import nurseShark from 'tideline/plugins/nurseshark/';
+
+import Messages from '../../components/messages';
+import UploaderButton from '../../components/uploaderbutton';
+
+export let PatientData = React.createClass({
   propTypes: {
-    bgPrefs: React.PropTypes.object,
-    timePrefs: React.PropTypes.object.isRequired,
-    patientData: React.PropTypes.object,
+    clearPatientData: React.PropTypes.func.isRequired,
+    currentPatientInViewId: React.PropTypes.string.isRequired,
+    fetchers: React.PropTypes.array.isRequired,
+    fetchingPatient: React.PropTypes.bool.isRequired,
+    fetchingPatientData: React.PropTypes.bool.isRequired,
+    isUserPatient: React.PropTypes.bool.isRequired,
+    messageThread: React.PropTypes.array,
+    onCloseMessageThread: React.PropTypes.func.isRequired,
+    onCreateMessage: React.PropTypes.func.isRequired,
+    onEditMessage: React.PropTypes.func.isRequired,
+    onFetchMessageThread: React.PropTypes.func.isRequired,
+    onRefresh: React.PropTypes.func.isRequired,
+    onSaveComment: React.PropTypes.func.isRequired,
     patient: React.PropTypes.object,
-    fetchingPatientData: React.PropTypes.bool,
-    isUserPatient: React.PropTypes.bool,
+    patientDataMap: React.PropTypes.object.isRequired,
+    patientNotesMap: React.PropTypes.object.isRequired,
     queryParams: React.PropTypes.object.isRequired,
-    uploadUrl: React.PropTypes.string,
-    onRefresh: React.PropTypes.func,
-    onFetchMessageThread: React.PropTypes.func,
-    onSaveComment: React.PropTypes.func,
-    onEditMessage: React.PropTypes.func,
-    onCreateMessage: React.PropTypes.func,
-    onUpdatePatientData: React.PropTypes.func,
+    trackMetric: React.PropTypes.func.isRequired,
+    uploadUrl: React.PropTypes.string.isRequired,
     user: React.PropTypes.object,
-    trackMetric: React.PropTypes.func.isRequired
+    viz: React.PropTypes.object.isRequired,
   },
 
   getInitialState: function() {
-    var params = this.props.queryParams;
     var state = {
       chartPrefs: {
         modal: {
@@ -70,34 +82,29 @@ var PatientData = React.createClass({
           },
           activeDomain: '2 weeks',
           extentSize: 14,
-          boxOverlay: false,
-          grouped: false,
-          showingLines: true
-        },
-        timePrefs: this.props.timePrefs
+          // we track both showingCbg & showingSmbg as separate Booleans for now
+          // in case we decide to layer BGM & CGM data, as has been discussed/prototyped
+          showingCbg: true,
+          showingSmbg: false,
+          smbgGrouped: true,
+          smbgLines: false,
+          smbgRangeOverlay: true,
+        }
       },
-      chartType: 'daily',
+      chartType: 'basics',
       createMessage: null,
       createMessageDatetime: null,
       datetimeLocation: null,
       initialDatetimeLocation: null,
-      messages: null
+      processingData: true,
+      processedPatientData: null,
+      timePrefs: {
+        timezoneAware: false,
+        timezoneName: null
+      }
     };
 
     return state;
-  },
-
-  componentWillMount: function() {
-    var params = this.props.queryParams;
-
-    if (!_.isEmpty(params)) {
-      var prefs = _.cloneDeep(this.state.chartPrefs);
-      prefs.bolusRatio = params.dynamicCarbs ? 0.5 : 0.35;
-      prefs.dynamicCarbs = params.dynamicCarbs;
-      this.setState({
-        chartPrefs: prefs
-      });
-    }
   },
 
   log: bows('PatientData'),
@@ -106,18 +113,16 @@ var PatientData = React.createClass({
     var patientData = this.renderPatientData();
     var messages = this.renderMessagesContainer();
 
-    /* jshint ignore:start */
     return (
       <div className="patient-data js-patient-data-page">
         {messages}
         {patientData}
       </div>
     );
-    /* jshint ignore:end */
   },
 
   renderPatientData: function() {
-    if (this.props.fetchingPatientData) {
+    if (this.props.fetchingPatient || this.props.fetchingPatientData || this.state.processingData) {
       return this.renderLoading();
     }
 
@@ -129,7 +134,6 @@ var PatientData = React.createClass({
   },
 
   renderEmptyHeader: function() {
-    /* jshint ignore:start */
     return (
       <Header
         chartType={'no-data'}
@@ -138,19 +142,18 @@ var PatientData = React.createClass({
         title={'Data'}
         ref="header" />
       );
-    /* jshint ignore:end */
   },
 
   renderLoading: function() {
     var header = this.renderEmptyHeader();
-    /* jshint ignore:start */
     return (
       <div>
         {header}
         <div className="container-box-outer patient-data-content-outer">
           <div className="container-box-inner patient-data-content-inner">
             <div className="patient-data-content">
-              <div className="patient-data-message patient-data-message-loading">
+              <img className='patient-data-loading-image' src={loadingGif} alt="Loading animation" />
+              <div className="patient-data-message patient-data-loading-message">
                 Loading data...
               </div>
             </div>
@@ -158,7 +161,6 @@ var PatientData = React.createClass({
         </div>
       </div>
     );
-    /* jshint ignore:end */
   },
 
   renderNoData: function() {
@@ -169,32 +171,34 @@ var PatientData = React.createClass({
     var handleClickUpload = function() {
       self.props.trackMetric('Clicked No Data Upload');
     };
+    var handleClickBlipNotes = function() {
+      self.props.trackMetric('Clicked No Data Get Blip Notes');
+    };
 
     if (this.props.isUserPatient) {
-      /* jshint ignore:start */
       content = (
-        <div className="patient-data-message-no-data">
-          <p>{'There is no data in here yet!'}</p>
-          <a
-            href={this.props.uploadUrl}
-            target="_blank"
-            onClick={handleClickUpload}>Upload data</a>
-          <p>
-            {'Or try '}<a href="" onClick={this.handleClickRefresh}>refreshing</a>{' the page.'}
+        <div className="patient-data-uploader-message">
+          <h1>To see your data, you’ll need to upload it!</h1>
+          <UploaderButton
+            buttonUrl={URL_UPLOADER_CHROME_STORE}
+            onClick={handleClickUpload}
+            buttonText='Get the Tidepool Uploader' />
+          <p>To upload Dexcom with iPhone get <a href={URL_BLIP_NOTES_APP_STORE} className="uploader-color-override" target="_blank" onClick={handleClickBlipNotes}>Blip Notes</a></p>
+          <p className="patient-no-data-help">
+            Already uploaded? <a href="" className="uploader-color-override" onClick={this.handleClickNoDataRefresh}>Click to reload.</a><br />
+            <b>Need help?</b> Email us at <a className="uploader-color-override" href="mailto:support@tidepool.org">support@tidepool.org</a> or visit our <a className="uploader-color-override" href="http://support.tidepool.org/">help page</a>.
           </p>
         </div>
       );
-      /* jshint ignore:end */
     }
 
-    /* jshint ignore:start */
     return (
       <div>
         {header}
         <div className="container-box-outer patient-data-content-outer">
           <div className="container-box-inner patient-data-content-inner">
             <div className="patient-data-content">
-              <div className="patient-data-message">
+              <div className="patient-data-message-no-data">
                 {content}
               </div>
             </div>
@@ -202,17 +206,15 @@ var PatientData = React.createClass({
         </div>
       </div>
     );
-    /* jshint ignore:end */
+
   },
 
   isEmptyPatientData: function() {
-    var patientDataLength =
-      utils.getIn(this.props.patientData, ['data', 'length'], 0);
-    return !Boolean(patientDataLength);
+    return (!_.get(this.props, 'patient.userid', false) || !this.state.processedPatientData);
   },
 
   isInsufficientPatientData: function() {
-    var data = this.props.patientData.data;
+    var data = _.get(this.state.processedPatientData, 'data', {});
     // add additional checks against data and return false iff:
     // only messages data
     if (_.reject(data, function(d) { return d.type === 'message'; }).length === 0) {
@@ -224,36 +226,59 @@ var PatientData = React.createClass({
 
   renderChart: function() {
     switch (this.state.chartType) {
+      case 'basics':
+        return (
+          <Basics
+            bgPrefs={this.state.bgPrefs}
+            chartPrefs={this.state.chartPrefs}
+            timePrefs={this.state.timePrefs}
+            patientData={this.state.processedPatientData}
+            onClickRefresh={this.handleClickRefresh}
+            onClickNoDataRefresh={this.handleClickNoDataRefresh}
+            onSwitchToBasics={this.handleSwitchToBasics}
+            onSwitchToDaily={this.handleSwitchToDaily}
+            onSwitchToModal={this.handleSwitchToModal}
+            onSwitchToSettings={this.handleSwitchToSettings}
+            onSwitchToWeekly={this.handleSwitchToWeekly}
+            updateBasicsData={this.updateBasicsData}
+            trackMetric={this.props.trackMetric}
+            uploadUrl={this.props.uploadUrl}
+            ref="tideline" />
+          );
+
       case 'daily':
-        /* jshint ignore:start */
+
         return (
           <Daily
-            bgPrefs={this.props.bgPrefs}
+            bgPrefs={this.state.bgPrefs}
             chartPrefs={this.state.chartPrefs}
-            imagesBaseUrl={config.IMAGES_ENDPOINT + '/tideline'}
+            timePrefs={this.state.timePrefs}
             initialDatetimeLocation={this.state.initialDatetimeLocation}
-            patientData={this.props.patientData}
+            patientData={this.state.processedPatientData}
             onClickRefresh={this.handleClickRefresh}
             onCreateMessage={this.handleShowMessageCreation}
             onShowMessageThread={this.handleShowMessageThread}
+            onSwitchToBasics={this.handleSwitchToBasics}
             onSwitchToDaily={this.handleSwitchToDaily}
             onSwitchToModal={this.handleSwitchToModal}
             onSwitchToSettings={this.handleSwitchToSettings}
             onSwitchToWeekly={this.handleSwitchToWeekly}
-            updateChartPrefs={this.updateChartPrefs}
             updateDatetimeLocation={this.updateDatetimeLocation}
             ref="tideline" />
           );
-        /* jshint ignore:end */
+
       case 'modal':
-        /* jshint ignore:start */
+
         return (
           <Modal
-            bgPrefs={this.props.bgPrefs}
+            bgPrefs={this.state.bgPrefs}
             chartPrefs={this.state.chartPrefs}
+            currentPatientInViewId={this.props.currentPatientInViewId}
+            timePrefs={this.state.timePrefs}
             initialDatetimeLocation={this.state.initialDatetimeLocation}
-            patientData={this.props.patientData}
+            patientData={this.state.processedPatientData}
             onClickRefresh={this.handleClickRefresh}
+            onSwitchToBasics={this.handleSwitchToBasics}
             onSwitchToDaily={this.handleSwitchToDaily}
             onSwitchToModal={this.handleSwitchToModal}
             onSwitchToSettings={this.handleSwitchToSettings}
@@ -262,38 +287,45 @@ var PatientData = React.createClass({
             updateChartPrefs={this.updateChartPrefs}
             updateDatetimeLocation={this.updateDatetimeLocation}
             uploadUrl={this.props.uploadUrl}
+            trendsState={this.props.viz.trends}
             ref="tideline" />
           );
-        /* jshint ignore:end */
+
       case 'weekly':
-        /* jshint ignore:start */
+
         return (
           <Weekly
-            bgPrefs={this.props.bgPrefs}
+            bgPrefs={this.state.bgPrefs}
             chartPrefs={this.state.chartPrefs}
-            imagesBaseUrl={config.IMAGES_ENDPOINT + '/tideline'}
+            timePrefs={this.state.timePrefs}
             initialDatetimeLocation={this.state.initialDatetimeLocation}
-            patientData={this.props.patientData}
+            patientData={this.state.processedPatientData}
             onClickRefresh={this.handleClickRefresh}
+            onClickNoDataRefresh={this.handleClickNoDataRefresh}
+            onSwitchToBasics={this.handleSwitchToBasics}
             onSwitchToDaily={this.handleSwitchToDaily}
             onSwitchToModal={this.handleSwitchToModal}
             onSwitchToSettings={this.handleSwitchToSettings}
             onSwitchToWeekly={this.handleSwitchToWeekly}
             trackMetric={this.props.trackMetric}
-            updateChartPrefs={this.updateChartPrefs}
             updateDatetimeLocation={this.updateDatetimeLocation}
             uploadUrl={this.props.uploadUrl}
-            ref="tideline" />
+            ref="tideline"
+            isClinicAccount={personUtils.isClinic(this.props.user)} />
           );
-        /* jshint ignore:end */
+
       case 'settings':
-        /* jshint ignore:start */
+
         return (
           <Settings
-            bgPrefs={this.props.bgPrefs}
+            bgPrefs={this.state.bgPrefs}
             chartPrefs={this.state.chartPrefs}
-            patientData={this.props.patientData}
+            currentPatientInViewId={this.props.currentPatientInViewId}
+            timePrefs={this.state.timePrefs}
+            patientData={this.state.processedPatientData}
             onClickRefresh={this.handleClickRefresh}
+            onClickNoDataRefresh={this.handleClickNoDataRefresh}
+            onSwitchToBasics={this.handleSwitchToBasics}
             onSwitchToDaily={this.handleSwitchToDaily}
             onSwitchToModal={this.handleSwitchToModal}
             onSwitchToSettings={this.handleSwitchToSettings}
@@ -302,12 +334,12 @@ var PatientData = React.createClass({
             uploadUrl={this.props.uploadUrl}
             ref="tideline" />
           );
-        /* jshint ignore:end */
+
     }
   },
 
   renderMessagesContainer: function() {
-    /* jshint ignore:start */
+
     if (this.state.createMessageDatetime) {
       return (
         <Messages
@@ -317,24 +349,26 @@ var PatientData = React.createClass({
           onClose={this.closeMessageCreation}
           onSave={this.props.onCreateMessage}
           onNewMessage={this.handleMessageCreation}
-          onEdit={this.handleEditMessage} />
+          onEdit={this.handleEditMessage}
+          timePrefs={this.state.timePrefs} />
       );
-    } else if(this.state.messages) {
+    } else if(this.props.messageThread) {
       return (
         <Messages
-          messages={this.state.messages}
+          messages={this.props.messageThread}
           user={this.props.user}
           patient={this.props.patient}
           onClose={this.closeMessageThread}
           onSave={this.handleReplyToMessage}
-          onEdit={this.handleEditMessage} />
+          onEdit={this.handleEditMessage}
+          timePrefs={this.state.timePrefs} />
       );
     }
-    /* jshint ignore:end */
+
   },
 
   closeMessageThread: function(){
-    this.setState({ messages: null });
+    this.props.onCloseMessageThread();
     this.refs.tideline.closeMessageThread();
     this.props.trackMetric('Closed Message Thread Modal');
   },
@@ -347,7 +381,7 @@ var PatientData = React.createClass({
 
   handleMessageCreation: function(message){
     var data = this.refs.tideline.createMessageThread(nurseShark.reshapeMessage(message));
-    this.props.onUpdatePatientData(data);
+    this.updateBasicsData(data);
     this.props.trackMetric('Created New Message');
   },
 
@@ -365,7 +399,7 @@ var PatientData = React.createClass({
       edit(message, cb);
     }
     var data = this.refs.tideline.editMessageThread(nurseShark.reshapeMessage(message));
-    this.props.onUpdatePatientData(data);
+    this.updateBasicsData(data);
     this.props.trackMetric('Edit To Message');
   },
 
@@ -374,9 +408,7 @@ var PatientData = React.createClass({
 
     var fetchMessageThread = this.props.onFetchMessageThread;
     if (fetchMessageThread) {
-      fetchMessageThread(messageThread,function(thread){
-        self.setState({ messages: thread });
-      });
+      fetchMessageThread(messageThread);
     }
 
     this.props.trackMetric('Clicked Message Icon');
@@ -387,8 +419,20 @@ var PatientData = React.createClass({
     this.props.trackMetric('Clicked Message Pool Background');
   },
 
-  handleSwitchToDaily: function(datetime) {
-    this.props.trackMetric('Clicked Switch To One Day', {
+  handleSwitchToBasics: function(e) {
+    this.props.trackMetric('Clicked Switch To Basics', {
+      fromChart: this.state.chartType
+    });
+    if (e) {
+      e.preventDefault();
+    }
+    this.setState({
+      chartType: 'basics'
+    });
+  },
+
+  handleSwitchToDaily: function(datetime, title) {
+    this.props.trackMetric('Clicked Basics '+title+' calendar', {
       fromChart: this.state.chartType
     });
     this.setState({
@@ -412,8 +456,16 @@ var PatientData = React.createClass({
       fromChart: this.state.chartType
     });
     datetime = datetime || this.state.datetimeLocation;
-    if (this.state.chartPrefs.timePrefs.timezoneAware) {
-      datetime = sundial.applyOffset(datetime, sundial.getOffsetFromZone(datetime, this.state.chartPrefs.timePrefs.timezoneName));
+    // when switching from initial Basics
+    // won't even have a datetimeLocation in the state yet
+    if (!datetime) {
+      this.setState({
+        chartType: 'weekly'
+      });
+      return;
+    }
+    if (this.state.timePrefs.timezoneAware) {
+      datetime = sundial.applyOffset(datetime, sundial.getOffsetFromZone(datetime, this.state.timePrefs.timezoneName));
       datetime = datetime.toISOString();
     }
     this.setState({
@@ -436,6 +488,11 @@ var PatientData = React.createClass({
 
   handleClickRefresh: function(e) {
     this.handleRefresh(e);
+    this.props.trackMetric('Clicked Refresh');
+  },
+
+  handleClickNoDataRefresh: function(e) {
+    this.handleRefresh(e);
     this.props.trackMetric('Clicked No Data Refresh');
   },
 
@@ -446,9 +503,20 @@ var PatientData = React.createClass({
 
     var refresh = this.props.onRefresh;
     if (refresh) {
-      this.setState({title: this.DEFAULT_TITLE});
-      refresh();
+      this.props.clearPatientData(this.props.currentPatientInViewId);
+      this.setState({
+        title: this.DEFAULT_TITLE,
+        processingData: true,
+        processedPatientData: null
+      });
+      refresh(this.props.currentPatientInViewId);
     }
+  },
+
+  updateBasicsData: function(data) {
+    this.setState({
+      processedPatientData: data
+    });
   },
 
   updateChartPrefs: function(newChartPrefs) {
@@ -456,18 +524,143 @@ var PatientData = React.createClass({
     _.assign(currentPrefs, newChartPrefs);
     this.setState({
       chartPrefs: currentPrefs
-    }, function() {
-      // this.log('Global example state changed:', JSON.stringify(this.state));
     });
   },
 
   updateDatetimeLocation: function(datetime) {
     this.setState({
       datetimeLocation: datetime
-    }, function() {
-      // this.log('Global example state changed:', JSON.stringify(this.state));
+    });
+  },
+
+  componentWillMount: function() {
+    this.doFetching(this.props);
+    var params = this.props.queryParams;
+
+    if (!_.isEmpty(params)) {
+      var prefs = _.cloneDeep(this.state.chartPrefs);
+      prefs.bolusRatio = params.dynamicCarbs ? 0.5 : 0.35;
+      prefs.dynamicCarbs = params.dynamicCarbs;
+      this.setState({
+        chartPrefs: prefs
+      });
+    }
+  },
+
+  componentWillUnmount: function() {
+    this.props.clearPatientData(this.props.currentPatientInViewId);
+  },
+
+  componentWillReceiveProps: function(nextProps) {
+    var userId = this.props.currentPatientInViewId;
+    var currentPatientData = _.get(this.props, ['patientDataMap', userId], null);
+
+    var nextPatientData = _.get(nextProps, ['patientDataMap', userId], null);
+
+    if (!currentPatientData && nextPatientData) {
+      this.doProcessing(nextProps);
+    }
+  },
+
+  doProcessing: function(nextProps) {
+    var userId = this.props.currentPatientInViewId;
+    var patientData = _.get(nextProps, ['patientDataMap', userId], null);
+    if (patientData) {
+      let combinedData = patientData.concat(nextProps.patientNotesMap[userId]);
+      window.downloadInputData = () => {
+        console.save(combinedData, 'blip-input.json');
+      };
+      let processedData = utils.processPatientData(
+        this,
+        combinedData,
+        this.props.queryParams
+      );
+      this.setState({
+        processedPatientData: processedData,
+        bgPrefs: {
+          bgClasses: processedData.bgClasses,
+          bgUnits: processedData.bgUnits
+        },
+        processingData: false
+      });
+    }
+  },
+
+  doFetching: function(nextProps) {
+    if (this.props.trackMetric) {
+      this.props.trackMetric('Viewed Data');
+    }
+
+    if (!nextProps.fetchers) {
+      return
+    }
+
+    nextProps.fetchers.forEach(function(fetcher) {
+      fetcher();
     });
   }
 });
 
-module.exports = PatientData;
+/**
+ * Expose "Smart" Component that is connect-ed to Redux
+ */
+
+let getFetchers = (dispatchProps, ownProps, api) => {
+  return [
+    dispatchProps.fetchPatient.bind(null, api, ownProps.routeParams.id),
+    dispatchProps.fetchPatientData.bind(null, api, ownProps.routeParams.id)
+  ];
+};
+
+export function mapStateToProps(state) {
+  var user = null;
+  var patient = null;
+  if (state.blip.allUsersMap){
+    if (state.blip.loggedInUserId) {
+      user = state.blip.allUsersMap[state.blip.loggedInUserId];
+    }
+
+    if (state.blip.currentPatientInViewId){
+      patient = state.blip.allUsersMap[state.blip.currentPatientInViewId];
+    }
+  }
+
+  return {
+    user: user,
+    isUserPatient: personUtils.isSame(user, patient),
+    patient: patient,
+    patientDataMap: state.blip.patientDataMap,
+    patientNotesMap: state.blip.patientNotesMap,
+    messageThread: state.blip.messageThread,
+    fetchingPatient: state.blip.working.fetchingPatient.inProgress,
+    fetchingPatientData: state.blip.working.fetchingPatientData.inProgress,
+    viz: state.viz,
+  };
+}
+
+let mapDispatchToProps = dispatch => bindActionCreators({
+  fetchPatient: actions.async.fetchPatient,
+  fetchPatientData: actions.async.fetchPatientData,
+  clearPatientData: actions.sync.clearPatientData,
+  fetchMessageThread: actions.async.fetchMessageThread,
+  closeMessageThread: actions.sync.closeMessageThread,
+}, dispatch);
+
+let mergeProps = (stateProps, dispatchProps, ownProps) => {
+  var api = ownProps.routes[0].api;
+  return Object.assign({}, _.pick(dispatchProps, ['clearPatientData']), stateProps, {
+    fetchers: getFetchers(dispatchProps, ownProps, api),
+    uploadUrl: api.getUploadUrl(),
+    onRefresh: dispatchProps.fetchPatientData.bind(null, api),
+    onFetchMessageThread: dispatchProps.fetchMessageThread.bind(null, api),
+    onCloseMessageThread: dispatchProps.closeMessageThread,
+    onSaveComment: api.team.replyToMessageThread.bind(api),
+    onCreateMessage: api.team.startMessageThread.bind(api),
+    onEditMessage: api.team.editMessage.bind(api),
+    trackMetric: ownProps.routes[0].trackMetric,
+    queryParams: ownProps.location.query,
+    currentPatientInViewId: ownProps.routeParams.id
+  });
+};
+
+export default connect(mapStateToProps, mapDispatchToProps, mergeProps)(PatientData);

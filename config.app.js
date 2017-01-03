@@ -13,6 +13,10 @@
  * not, you can obtain one from Tidepool Project at tidepool.org.
  */
 
+/* global __PASSWORD_MIN_LENGTH__ */
+/* global __PASSWORD_MAX_LENGTH__ */
+/* global __ABOUT_MAX_LENGTH__ */
+
 var pkg = require('./package.json');
 
 function booleanFromText(value, defaultValue) {
@@ -35,12 +39,14 @@ function integerFromText(value, defaultValue) {
   return value;
 }
 
+// the constants below are defined in webpack.config.js -- they're aliases for
+// environment variables.
 module.exports = {
   VERSION: pkg.version,
-  MOCK: booleanFromText(process.env.MOCK, false),
-  MOCK_PARAMS: process.env.MOCK_PARAMS || '',
-  UPLOAD_API: process.env.UPLOAD_API || 'https://chrome.google.com/webstore/detail/tidepool-uploader/cabklgajffclbljkhmjphejemhpbghfb',
-  API_HOST: process.env.API_HOST || 'https://devel-api.tidepool.io',
-  SHOW_ACCEPT_TERMS: booleanFromText(process.env.SHOW_ACCEPT_TERMS, true),
-  PASSWORD_MIN_LENGTH: integerFromText(process.env.PASSWORD_MIN_LENGTH, 8)
+  UPLOAD_API: __UPLOAD_API__ || 'https://tidepool.org/uploader',
+  API_HOST: __API_HOST__ || 'https://dev-api.tidepool.org',
+  INVITE_KEY: __INVITE_KEY__ || '',
+  PASSWORD_MIN_LENGTH: integerFromText(__PASSWORD_MIN_LENGTH__, 8),
+  PASSWORD_MAX_LENGTH: integerFromText(__PASSWORD_MAX_LENGTH__, 72),
+  ABOUT_MAX_LENGTH: integerFromText(__ABOUT_MAX_LENGTH__, 256)
 };

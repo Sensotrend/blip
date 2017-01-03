@@ -104,3 +104,38 @@ a.btn-tertiary {
     color: @blue-green-light;
   }
 }
+
+.btn-chart,
+a.btn-chart {
+  font-weight: normal;
+  background-color: #fff;
+  border-color: fade(@purple-highcontrast, 15%);
+  color: @purple-highcontrast;
+
+  &:hover,
+  &:focus,
+  &:active {
+    background-color: fade(@blue-green-light, 50%);
+    border-color: fade(@purple-highcontrast, 25%);
+  }
+}
+
+.btn-chart-control,
+a.btn-chart-control {
+  font-weight: normal;
+  background-color: @light-blue;
+  color: @purple-highcontrast;
+  border: none;
+  margin: 0 @spacing-tiny;
+
+  &:hover,
+  &:focus,
+  &:active {
+    background-color: fade(@blue-green-light, 50%);
+  }
+
+  &.active {
+    background-color: @gray-dark;
+    color: #fff;
+  }
+}

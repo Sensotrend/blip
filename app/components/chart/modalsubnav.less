@@ -20,18 +20,28 @@
   margin: 0 auto;
 
   background-color: white;
+
   .modalSubNavContainer {
     display: flex;
     justify-content: space-between;
 
     width: 910px;
-    
+
     margin: 0px 20px 0px 50px;
     padding-top: 10px;
     padding-bottom: 10px;
 
     .flexed {
       flex-grow: 2;
+      max-height: 50px;
+    }
+  }
+
+  .domainContainer {
+    margin-top: @spacing-base;
+
+    .active {
+      font-weight: bold;
     }
   }
 
@@ -40,78 +50,36 @@
     color: @gray-darkest;
     margin: 0 auto;
     text-align: center;
+    padding-top: @spacing-tiny;
   }
 
-  a.modalDomain {
-    color: @gray-darkest;
-    line-height: 30px;
-    margin: 0 8px;
-    &.active {
-      font-weight: bold;
-      text-decoration: underline;
-    }
-  }
 
-  .dayGroupsContainer {
+  .daysGroupContainer {
     display: flex;
     justify-content: space-between;
+
+    margin-top: @spacing-base;
   }
 
   .daysGroup {
-    border-radius: 5px;
-    border: @gray 1px solid;
-    cursor: pointer;
-
-    padding: 3px;
-    margin: 3px;
-    &.active {
-      background-color: @gray;
-      opacity: 0.8;
-    }
-    &.weekday {
-      padding-left: 13px;
-    }
-    &.weekend {
-      padding-right: 13px;
-    }
+    margin-left: @spacing-tiny;
+    margin-right: 2px;
+    vertical-align: bottom;
   }
 
   a.dayFilter {
+    cursor: pointer;
     display: inline-block;
-    line-height: 30px;
+    line-height: (1.5 * @spacing-base) - 4;
+    padding: 0;
     width: 30px;
     margin: 0 3px;
 
-    background-color: white;
-    border-radius: 5px;
-    border: @gray-dark 1px solid;
-    color: @gray-darkest;
     text-align: center;
+
     &.active {
       font-weight: bold;
       opacity: 1.0;
-    }
-
-    &.monday.active {
-      background-color: @monday;
-    }
-    &.tuesday.active {
-      background-color: @tuesday;
-    }
-    &.wednesday.active {
-      background-color: @wednesday;
-    }
-    &.thursday.active {
-      background-color: @thursday;
-    }
-    &.friday.active {
-      background-color: @friday;
-    }
-    &.saturday.active {
-      background-color: @saturday;
-    }
-    &.sunday.active {
-      background-color: @sunday;
     }
   }
 }

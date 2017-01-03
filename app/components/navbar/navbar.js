@@ -1,4 +1,4 @@
-/** @jsx React.DOM */
+
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -15,8 +15,11 @@
  */
 
 var React = require('react');
+var IndexLink = require('react-router').IndexLink;
+var Link = require('react-router').Link;
+
 var _ = require('lodash');
-var cx = require('react/lib/cx');
+var cx = require('classnames');
 
 var personUtils = require('../../core/personutils');
 var NavbarPatientCard = require('../../components/navbarpatientcard');
@@ -66,11 +69,11 @@ var Navbar = React.createClass({
     };
 
     return (
-      <a
-        href="#/"
+      <IndexLink
+        to="/"
         className="Navbar-logo"
         onClick={handleClick}>
-      </a>
+      </IndexLink>
     );
   },
 
@@ -79,7 +82,7 @@ var Navbar = React.createClass({
       return '';
     }
 
-    return '#/patients/' + patient.userid + '/data';
+    return '/patients/' + patient.userid + '/data';
   },
 
   renderPatientSection: function() {
@@ -153,10 +156,10 @@ var Navbar = React.createClass({
     };
 
     return (
-      <a href={patientUrl} onClick={handleClick} className="Navbar-button Navbar-button--patient Navbar-button--blue Navbar-uploadButton">
+      <Link to={patientUrl} onClick={handleClick} className="Navbar-button Navbar-button--patient Navbar-button--blue Navbar-uploadButton">
         <i className="Navbar-icon icon-share-data"></i>
         <span className="Navbar-shareLabel">Share</span>
-      </a>
+      </Link>
     );
   },
 
@@ -180,6 +183,7 @@ var Navbar = React.createClass({
   },
 
   renderMenuSection: function() {
+    var currentPage = (this.props.currentPage && this.props.currentPage[0] === '/') ? this.props.currentPage.slice(1) : this.props.currentPage;
     var user = this.props.user;
 
     if (_.isEmpty(user)) {
@@ -196,15 +200,14 @@ var Navbar = React.createClass({
     var handleCareteam = function() {
       self.props.trackMetric('Clicked Navbar CareTeam');
     };
-
     var patientsClasses = cx({
       'Navbar-button': true,
-      'Navbar-selected': this.props.currentPage && this.props.currentPage === 'patients'
+      'Navbar-selected': currentPage && currentPage === 'patients'
     });
 
     var accountSettingsClasses = cx({
       'Navbar-button': true,
-      'Navbar-dropdownIcon-show': this.props.currentPage && this.props.currentPage === 'profile'
+      'Navbar-dropdownIcon-show': currentPage && currentPage === 'profile',
     });
 
     var dropdownClasses = cx({
@@ -215,7 +218,7 @@ var Navbar = React.createClass({
     var dropdownIconClasses = cx({
       'Navbar-dropdownIcon': true,
       'Navbar-dropdownIcon-show': self.state.showDropdown,
-      'Navbar-dropdownIcon-current': this.props.currentPage && this.props.currentPage === 'profile'
+      'Navbar-dropdownIcon-current': currentPage && currentPage === 'profile'
     });
 
     var dropdownIconIClasses = cx({
@@ -227,7 +230,7 @@ var Navbar = React.createClass({
     return (
       <ul className="Navbar-menuSection" ref="user">
         <li className="Navbar-menuItem">
-          <a href="#/patients" title="Care Team" onClick={handleCareteam} className={patientsClasses} ref="careteam"><i className="Navbar-icon icon-careteam"></i></a>
+          <Link to="/patients" title="Care Team" onClick={handleCareteam} className={patientsClasses} ref="careteam"><i className="Navbar-icon icon-careteam"></i></Link>
         </li>
         <li className={dropdownIconClasses}>
           <div onClick={this.toggleDropdown}>
@@ -242,13 +245,13 @@ var Navbar = React.createClass({
           <div onClick={this.stopPropagation} className={dropdownClasses}>
             <ul>
               <li>
-                <a href="#/profile" title="Account" onClick={handleClickUser} className={accountSettingsClasses}>
-                  <i className='Navbar-icon icon-settings'></i>Account Settings
-                </a>
+                <Link to="/profile" title="Account" onClick={handleClickUser} className={accountSettingsClasses}>
+                  <i className='Navbar-icon icon-settings'></i><span className="Navbar-menuText">Account Settings</span>
+                </Link>
               </li>
               <li>
                 <a href="" title="Logout" onClick={this.handleLogout} className="Navbar-button" ref="logout">
-                  <i className='Navbar-icon icon-logout'></i>Logout
+                  <i className='Navbar-icon icon-logout'></i><span className="Navbar-menuText">Logout</span>
                 </a>
               </li>
             </ul>
@@ -271,7 +274,7 @@ var Navbar = React.createClass({
     if (!patient) {
       return;
     }
-    return '#/patients/' + patient.userid;
+    return '/patients/' + patient.userid;
   },
 
   isSamePersonUserAndPatient: function() {

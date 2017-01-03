@@ -1,4 +1,4 @@
-/** @jsx React.DOM */
+
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -16,18 +16,16 @@
 
 var React = require('react');
 var _ = require('lodash');
-var cx = require('react/lib/cx');
+var cx = require('classnames');
 
 var personUtils = require('../../core/personutils');
-var PersonCard = require('../../components/personcard');
 var PatientCard = require('../../components/patientcard');
 
 var PeopleList = React.createClass({
   propTypes: {
     people: React.PropTypes.array,
-    isPatientList: React.PropTypes.bool,
-    onClickPerson: React.PropTypes.func,
     uploadUrl: React.PropTypes.string,
+    onClickPerson: React.PropTypes.func,
     onRemovePatient: React.PropTypes.func,
     trackMetric: React.PropTypes.func.isRequired
   },
@@ -45,52 +43,57 @@ var PeopleList = React.createClass({
   },
 
   render: function() {
-    var peopleNodes = _.map(this.props.people, this.renderPeopleListItem);
+    var peopleNodes = [];
+    if (!_.isEmpty(this.props.people)) {
 
-    this.props.people = _.sortBy(_.sortBy(this.props.people, 'fullname'), function(person) {
+      // first sort by fullName
+      var sortedPeople = _.sortBy(this.props.people, function(person) {
+        var patient = _.get(person, 'profile.patient', null);
+        return (patient && patient.isOtherPerson && patient.fullName) ? 
+          patient.fullName.toLowerCase() : person.profile.fullName.toLowerCase();
+      });
 
-      if (_.isEmpty(person.permissions) === false){
-        if (person.permissions.root) {
-          return 1;
+      // then pop the logged-in user to the top if has data
+      sortedPeople = _.sortBy(sortedPeople, function(person) {
+        if (!_.isEmpty(person.permissions)) {
+          if (person.permissions.root) {
+            return 1;
+          }
+          else {
+            return 2;
+          }
         }
-        if (person.permissions.admin) {
-          return 2;
-        }
-        if (person.permissions.upload) {
-          return 3;
-        }
-      }
-      return 4;
-    });
+        return 2;
+      });
 
-    peopleNodes = _.map(this.props.people, this.renderPeopleListItem);
+      peopleNodes = _.map(sortedPeople, this.renderPeopleListItem);
+    }
 
     var classes = cx({
       'people-list': true,
       'list-group': true,
-      'people-list-single': this.props.people.length === 1
+      'people-list-single': (this.props.people && this.props.people.length === 1)
     });
 
-    var editControls = this.editablePersonExists(this.props.people) ? this.renderEditControls() : null;
+    var removeControls = this.removeablePersonExists(this.props.people) ? this.renderRemoveControls() : null;
 
-      /* jshint ignore:start */
     return (
       <div>
         <ul className={classes}>
           {peopleNodes}
           <div className="clear"></div>
         </ul>
-        {editControls}
+        {removeControls}
       </div>
     );
-    /* jshint ignore:end */
+    
   },
 
-  editablePersonExists: function(patients) {
-    return Boolean(_.find(patients, personUtils.hasEditPermissions));
+  removeablePersonExists: function(patients) {
+    return Boolean(_.find(patients, personUtils.isRemoveable));
   },
 
-  renderEditControls: function() {
+  renderRemoveControls: function() {
     var key = 'edit';
     var text = 'Remove People';
     if (this.state.editing) {
@@ -115,67 +118,27 @@ var PeopleList = React.createClass({
     var peopleListItemContent;
     var displayName = this.getPersonDisplayName(person);
     var self = this;
-    var handleClick;
+    var handleClick = function() {
+      self.props.onClickPerson(person);
+    };
 
-    if (this.props.isPatientList) {
-      handleClick = function() {
-        self.props.onClickPerson(person);
-      };
-
-      /* jshint ignore:start */
-      return (
-        <li key={person.userid || index} className="patient-list-item">
-          <PatientCard
-            href={person.link}
-            onClick={handleClick}
-            uploadUrl={this.props.uploadUrl}
-            isEditing={this.state.editing}
-            onRemovePatient={this.props.onRemovePatient}
-            patient={person}
-            trackMetric={this.props.trackMetric}></PatientCard>
-        </li>
-      );
-      /* jshint ignore:end */
-    }
-
-    if (person.link) {
-      handleClick = function() {
-        self.props.onClickPerson(person);
-      };
-      /* jshint ignore:start */
-      peopleListItemContent = (
-        <PersonCard
-          href={person.link}
-          onClick={handleClick}>{displayName}</PersonCard>
-      );
-      /* jshint ignore:end */
-    }
-    else {
-      /* jshint ignore:start */
-      peopleListItemContent = (
-        <PersonCard>{displayName}</PersonCard>
-      );
-      /* jshint ignore:end */
-    }
-
-    /* jshint ignore:start */
     return (
-      <li key={person.userid || index} className="people-list-item">
-        {peopleListItemContent}
+      <li key={person.userid || index} className="patient-list-item">
+        <PatientCard
+          href={person.link}
+          onClick={handleClick}
+          uploadUrl={this.props.uploadUrl}
+          isEditing={this.state.editing}
+          onRemovePatient={this.props.onRemovePatient}
+          patient={person}
+          trackMetric={this.props.trackMetric}></PatientCard>
       </li>
     );
-    /* jshint ignore:end */
   },
 
   getPersonDisplayName: function(person) {
     var fullName;
-
-    if (this.props.isPatientList) {
-      fullName = personUtils.patientFullName(person);
-    }
-    else {
-      fullName = personUtils.fullName(person);
-    }
+    fullName = personUtils.patientFullName(person);
 
     if (!fullName) {
       return 'Anonymous user';

@@ -55,7 +55,6 @@ api.init = function(cb) {
 };
 
 // ----- User -----
-
 api.user = {};
 
 api.user.isAuthenticated = function() {
@@ -80,6 +79,17 @@ api.user.login = function(user, options, cb) {
   });
 };
 
+api.user.oauthLogin = function(accessToken, cb) {
+  api.log('GET /user/oauthLogin');
+
+  tidepool.oauthLogin(accessToken, function(err, data) {
+    if (err) {
+      return cb(err);
+    }
+    cb(null, data);
+  });
+};
+
 api.user.signup = function(user, cb) {
   api.log('POST /user');
 
@@ -92,7 +102,29 @@ api.user.signup = function(user, cb) {
       return cb(err);
     }
 
+    /**
+     * Because Platform Client handles this error slightly weirdly, and returns
+     * it in the account object we need to inspect the account object
+     * for the following object signature and then if found, call the
+     * callback with an error based on the contents of the object
+     *
+     * TODO: consider when refactoring platform client
+     */
+    if(account.code && account.code === 409) {
+      return cb({
+        status: account.code,
+        error: account.reason
+      });
+    }
+
     var userId = account.userid;
+
+    tidepool.signupStart(userId, function(err, results){
+      if (err){
+        api.log('signup process error', err);
+      }
+      api.log('signup process started');
+    });
 
     // Then, add additional user info (full name, etc.) to profile
     tidepool.addOrUpdateProfile(userId, newProfile, function(err, results) {
@@ -100,6 +132,7 @@ api.user.signup = function(user, cb) {
         return cb(err);
       }
 
+      api.log('added profile info to signup', results);
       cb(null, userFromAccountAndProfile({
         account: account,
         profile: results
@@ -112,16 +145,30 @@ api.user.logout = function(cb) {
   api.log('POST /user/logout');
 
   if (!api.user.isAuthenticated()) {
+    api.log('not authenticated but still destroySession');
+    tidepool.destroySession();
+    if (cb) {
+      cb();
+    }
     return;
   }
 
   tidepool.logout(function(err) {
     if (err) {
-      return cb(err);
+      api.log('error logging out but still destroySession');
+      tidepool.destroySession();
     }
-
-    cb();
+    if (cb) {
+      cb();
+    }
+    return;
   });
+};
+
+api.user.acceptTerms = function(termsData, cb){
+  api.log('PUT /user' );
+  api.log('terms accepted on', termsData.termsAccepted);
+  return tidepool.updateCurrentUser(termsData,cb);
 };
 
 api.user.destroySession = function() {
@@ -203,14 +250,20 @@ function profileFromUser(user) {
 }
 
 function userFromAccountAndProfile(results) {
-  var account = results.account;
+  // sometimes `account` isn't in the results after e.g., password update
+  var account = results.account || {};
   var profile = results.profile;
 
-  var user = _.pick(account, 'userid', 'username', 'emails');
+  var user = account;
   user.profile = profile;
 
   return user;
 }
+
+api.user.resendEmailVerification = function(email, callback) {
+  api.log('POST /confirm/resend/signup/' + email);
+  return tidepool.signupResend(email, callback);
+};
 
 api.user.requestPasswordReset = function(email, callback) {
   api.log('POST /confirm/send/forgot/' + email);
@@ -220,6 +273,16 @@ api.user.requestPasswordReset = function(email, callback) {
 api.user.confirmPasswordReset = function(payload, callback) {
   api.log('PUT /confirm/accept/forgot');
   return tidepool.confirmPasswordReset(payload, callback);
+};
+
+api.user.confirmSignUp = function(key, callback) {
+  api.log('PUT /confirm/accept/signup/'+key);
+  return tidepool.signupConfirm(key, callback);
+};
+
+api.user.custodialConfirmSignUp = function(key, birthday, password, callback) {
+  api.log('PUT /confirm/accept/signup/'+key, 'custodial');
+  return tidepool.custodialSignupConfirm(key, birthday, password, callback);
 };
 
 // ----- Patient -----
@@ -403,7 +466,7 @@ api.team.getMessageThread = function(messageId,cb){
   api.log('GET /message/thread/' + messageId);
 
   tidepool.getMessageThread(messageId, function(error,messages){
-    if(error){
+    if (error){
       return cb(error);
     }
 
@@ -424,7 +487,7 @@ api.team.getNotes = function(userId,cb){
   var dateRange = null;
 
   tidepool.getNotesForUser(userId, dateRange, function(error,messages){
-    if(error){
+    if (error){
       return cb(error);
     }
 
@@ -440,7 +503,9 @@ api.team.replyToMessageThread = function(message,cb){
     if (error) {
       return cb(error);
     }
-    cb(null, replyId);
+    if (cb) {
+      cb(null, replyId);
+    }
   });
 };
 
@@ -452,7 +517,9 @@ api.team.startMessageThread = function(message,cb){
     if (error) {
       return cb(error);
     }
-    cb(null, messageId);
+    if (cb) {
+      cb(null, messageId);
+    }
   });
 };
 
@@ -463,7 +530,9 @@ api.team.editMessage = function(message,cb){
     if (error) {
       return cb(error);
     }
-    cb(null, null);
+    if (cb) {
+      cb(null, null);
+    }
   });
 };
 
@@ -568,10 +637,10 @@ api.metrics.track = function(eventName, properties, cb) {
 
 api.errors = {};
 
-api.errors.log = function(error, message, properties) {
+api.errors.log = function(error, message, properties, cb) {
   api.log('POST /errors');
 
-  return tidepool.logAppError(error, message, properties);
+  return tidepool.logAppError(error, message, properties, cb);
 };
 
 module.exports = api;

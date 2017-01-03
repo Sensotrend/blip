@@ -1,4 +1,4 @@
-/** @jsx React.DOM */
+
 /**
  * Copyright (c) 2014, Tidepool Project
  * 
@@ -32,11 +32,11 @@ var LogoutOverlay = React.createClass({
     }
     
     return (
-      /* jshint ignore:start */
+      
       <div className={className}>
         <div className="logout-overlay-text">Logging out...</div>
       </div>
-      /* jshint ignore:end */
+      
     );
   },
 

@@ -1,4 +1,4 @@
-/** @jsx React.DOM */
+
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -15,14 +15,16 @@
  */
 
 var React = require('react');
+var Link = require('react-router').Link;
 var _ = require('lodash');
-var cx = require('react/lib/cx');
+var cx = require('classnames');
 
 var personUtils = require('../../core/personutils');
+var utils = require('../../core/utils');
 
 var NavbarPatientCard = React.createClass({
   propTypes: {
-    href: React.PropTypes.string,
+    href: React.PropTypes.string.isRequired,
     currentPage: React.PropTypes.string,
     uploadUrl: React.PropTypes.string,
     patient: React.PropTypes.object,
@@ -30,7 +32,7 @@ var NavbarPatientCard = React.createClass({
   },
 
   render: function() {
-    var patient = this.props.patient;
+    var patient = this.props.patient || {};
     var self = this;
 
     var classes = cx({
@@ -42,7 +44,7 @@ var NavbarPatientCard = React.createClass({
     var share = this.renderShare(patient);
     var profile = this.renderProfile(patient);
 
-    /* jshint ignore:start */
+    
     return (
       <div className={classes}>
         <i className="Navbar-icon icon-face-standin"></i>
@@ -57,7 +59,7 @@ var NavbarPatientCard = React.createClass({
         <div className="clear"></div>
       </div>
     );
-    /* jshint ignore:end */
+    
   },
 
   renderView: function() {
@@ -66,15 +68,23 @@ var NavbarPatientCard = React.createClass({
       'patientcard-actions--highlight': this.props.currentPage && this.props.currentPage.match(/(data)$/i)
     });
 
+    var self = this;
+    var handleClick = function(e) {
+      self.props.trackMetric('Clicked Navbar View Data');
+    };
+
     return (
-      /* jshint ignore:start */
-      <a className={classes} href={this.props.href}>View</a>
-      /* jshint ignore:end */
+      
+      <Link className={classes} onClick={handleClick} to={this.props.href}>View</Link>
+      
     );
   },
 
   renderProfile: function(patient) {
-    var url = patient.link.slice(0,-5) + '/profile';
+    var url = '';
+    if (!_.isEmpty(patient.link)) {
+      url = patient.link.slice(0,-5) + '/profile';
+    }
 
     var classes = cx({
       'patientcard-actions-profile': true,
@@ -82,15 +92,20 @@ var NavbarPatientCard = React.createClass({
       'patientcard-actions--highlight': this.props.currentPage && this.props.currentPage.match(/(profile)$/i)
     });
 
+    var self = this;
+    var handleClick = function(e) {
+      self.props.trackMetric('Clicked Navbar Name');
+    };
+
     return (
-      /* jshint ignore:start */
-      <a className={classes} href={url} title="Profile">
+      
+      <Link className={classes} to={url} onClick={handleClick} title="Profile">
         <div className="patientcard-fullname" title={this.getFullName()}>
           {this.getFullName()}
           <i className="patientcard-icon icon-settings"></i>
         </div>
-      </a>
-      /* jshint ignore:end */
+      </Link>
+      
     );
   },
 
@@ -110,9 +125,9 @@ var NavbarPatientCard = React.createClass({
 
     if(_.isEmpty(patient.permissions) === false && patient.permissions.root) {
       return (
-        /* jshint ignore:start */
+        
         <a href="" onClick={handleClick} className={classes} title="Upload data">Upload</a>
-        /* jshint ignore:end */
+        
       );
     }
 
@@ -120,18 +135,26 @@ var NavbarPatientCard = React.createClass({
   },
 
   renderShare: function(patient) {
-    var shareUrl = patient.link.slice(0,-5) + '/share';
+    var shareUrl = '';
+    if (!_.isEmpty(patient.link)) {
+      shareUrl = patient.link.slice(0,-5) + '/share';
+    }
 
     var classes = cx({
       'patientcard-actions-share': true,
       'patientcard-actions--highlight': this.props.currentPage && this.props.currentPage.match(/(share)$/i)
     });
 
+    var self = this;
+    var handleClick = function(e) {
+      self.props.trackMetric('Clicked Navbar Share Data');
+    };
+
     if(_.isEmpty(patient.permissions) === false && patient.permissions.root) {
       return (
-        /* jshint ignore:start */
-        <a className={classes} href={shareUrl} title="Share data">Share</a>
-        /* jshint ignore:end */
+        
+        <Link className={classes} onClick={handleClick} to={shareUrl} title="Share data">Share</Link>
+        
       );
     }
 

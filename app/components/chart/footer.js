@@ -1,23 +1,27 @@
-/** @jsx React.DOM */
-/* 
+
+/*
  * == BSD2 LICENSE ==
  * Copyright (c) 2014, Tidepool Project
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the associated License, which is identical to the BSD 2-Clause
  * License as published by the Open Source Initiative at opensource.org.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  * FOR A PARTICULAR PURPOSE. See the License for more details.
- * 
+ *
  * You should have received a copy of the License along with this program; if
  * not, you can obtain one from Tidepool Project at tidepool.org.
  * == BSD2 LICENSE ==
  */
 var bows = require('bows');
 var React = require('react');
-var cx = require('react/lib/cx');
+var cx = require('classnames');
+
+import * as viz from '@tidepool/viz';
+const TwoOptionToggle = viz.components.TwoOptionToggle;
+const RangeSelect = viz.components.RangeSelect;
 
 var tideline = {
   log: bows('Footer')
@@ -30,116 +34,93 @@ var TidelineFooter = React.createClass({
     onClickGroup: React.PropTypes.func,
     onClickLines: React.PropTypes.func,
     onClickValues: React.PropTypes.func,
+    onClickRefresh: React.PropTypes.func,
+    onClickBgDataToggle: React.PropTypes.func,
     boxOverlay: React.PropTypes.bool,
     grouped: React.PropTypes.bool,
     showingLines: React.PropTypes.bool,
+    showingCbg: React.PropTypes.bool,
+    showingSmbg: React.PropTypes.bool,
     showingValues: React.PropTypes.bool,
-    onClickRefresh: React.PropTypes.func
+    displayFlags: React.PropTypes.object,
+    currentPatientInViewId: React.PropTypes.string,
   },
   render: function() {
     var refreshLinkClass = cx({
       'patient-data-subnav-hidden': this.props.chartType === 'no-data'
     });
 
-    function getValuesLinkText(props) {
-      if (props.chartType === 'weekly') {
-        if (props.showingValues) {
-          return 'Hide numbers';
-        }
-        else {
-          return 'Show numbers';
-        }
-      }
-      else {
-        return '';
-      }
-    }
-
-    function getLinesLinkText(props) {
-      if (props.chartType === 'modal') {
-        if (props.showingLines) {
-          return 'Hide lines';
-        }
-        else {
-          return 'Show lines';
-        }
-      }
-      else {
-        return '';
-      }
-    }
-
-    function getGroupLinkText(props) {
-      if (props.chartType === 'modal') {
-        if (props.grouped) {
-          return 'Ungroup';
-        }
-        else {
-          return 'Group';
-        }
-      }
-      else {
-        return '';
-      }
-    }
-
-    function getOverlayLinkText(props) {
-      if (props.chartType === 'modal') {
-        if (props.boxOverlay) {
-          return 'Hide range & average';
-        }
-        else {
-          return 'Show range & average';
-        }
-      }
-      else {
-        return '';
-      }
-    }
-
-    var valuesLinkText = getValuesLinkText(this.props);
-
-    var linesLinkText = getLinesLinkText(this.props);
-
-    var groupLinkText = getGroupLinkText(this.props);
-
-    var overlayLinkText = getOverlayLinkText(this.props);
-
-    /* jshint ignore:start */
     var showValues = (
-      <a href="" onClick={this.props.onClickValues}>{valuesLinkText}</a>
-      );
-    /* jshint ignore:end */
-
-    /* jshint ignore:start */
-    var modalOpts = (
-      <div>
-        <a href="" onClick={this.props.onClickLines}>{linesLinkText}</a>
-        <a href="" onClick={this.props.onClickGroup}>{groupLinkText}</a>
-        <a href="" onClick={this.props.onClickBoxOverlay}>{overlayLinkText}</a>
+      <div className="footer-right-options">
+        <label htmlFor="valuesCheckbox">
+          <input type="checkbox" name="valuesCheckbox" id="valuesCheckbox"
+            checked={this.props.showingValues}
+            onChange={this.props.onClickValues} /> Values
+        </label>
       </div>
+    );
+
+    var modalOpts = (
+      <div className="footer-right-options">
+        <label htmlFor="overlayCheckbox">
+          <input type="checkbox" name="overlayCheckbox" id="overlayCheckbox"
+            checked={this.props.boxOverlay}
+            onChange={this.props.onClickBoxOverlay} /> Range &amp; Average
+        </label>
+
+        <label htmlFor="groupCheckbox">
+          <input type="checkbox" name="groupCheckbox" id="groupCheckbox"
+            checked={this.props.grouped}
+            onChange={this.props.onClickGroup} /> Group
+        </label>
+
+        <label htmlFor="linesCheckbox">
+          <input type="checkbox" name="linesCheckbox" id="linesCheckbox"
+            checked={this.props.showingLines}
+            onChange={this.props.onClickLines} /> Lines
+        </label>
+      </div>
+    );
+
+    var rightSide = null;
+    var bgDataToggle = null;
+
+    if (this.props.chartType === 'weekly') {
+      rightSide = showValues;
+    }
+    if (this.props.chartType === 'modal') {
+      if (this.props.showingSmbg) {
+        rightSide = modalOpts;
+      } else {
+        rightSide = <RangeSelect
+          displayFlags={this.props.displayFlags}
+          currentPatientInViewId={this.props.currentPatientInViewId}
+        />;
+      }
+      bgDataToggle = (
+        <span className="toggle-container">
+          <TwoOptionToggle
+            left={{ label: 'BGM', state: this.props.showingSmbg }}
+            right={{ label: 'CGM', state: this.props.showingCbg }}
+            toggleFn={this.props.onClickBgDataToggle}
+          />
+        </span>
       );
-    /* jshint ignore:end */
+    }
 
-    /* jshint ignore:start */
-    var rightSide = this.props.chartType === 'weekly' ? showValues :
-      this.props.chartType === 'modal' ? modalOpts : null;
-    /* jshint ignore:end */
-
-    /* jshint ignore:start */
     return (
       <div className="container-box-outer patient-data-footer-outer">
         <div className="container-box-inner patient-data-footer-inner">
-          <div className="grid patient-data-footer">
-            <div className="grid-item one-whole medium-one-half patient-data-footer-left">
-              <a href="" className={refreshLinkClass} onClick={this.props.onClickRefresh}>Refresh</a>
-            </div>
-            <div className="grid-item one-whole medium-one-half patient-data-footer-right">{rightSide}</div>
+          <div className="patient-data-footer-left">
+            <button className="btn btn-chart btn-refresh"
+              onClick={this.props.onClickRefresh}>
+              Refresh</button>
+            {bgDataToggle}
           </div>
+          <div className="patient-data-footer-right">{rightSide}</div>
         </div>
       </div>
-      );
-    /* jshint ignore:end */
+    );
   }
 });
 

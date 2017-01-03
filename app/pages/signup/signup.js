@@ -1,4 +1,3 @@
-/** @jsx React.DOM */
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -14,27 +13,38 @@
  * not, you can obtain one from Tidepool Project at tidepool.org.
  */
 
-var React = require('react');
-var _ = require('lodash');
+import React from 'react';
+import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
 
-var config = require('../../config');
+import * as actions from '../../redux/actions';
 
-var utils = require('../../core/utils');
-var LoginNav = require('../../components/loginnav');
-var LoginLogo = require('../../components/loginlogo');
-var SimpleForm = require('../../components/simpleform');
+import _ from 'lodash';
+import config from '../../config';
+import { validateForm } from '../../core/validation';
 
-var Signup = React.createClass({
+import utils from '../../core/utils';
+import WaitList from '../../components/waitlist';
+import LoginNav from '../../components/loginnav';
+import LoginLogo from '../../components/loginlogo';
+import SimpleForm from '../../components/simpleform';
+
+export let Signup = React.createClass({
   propTypes: {
-    onSubmit: React.PropTypes.func.isRequired,
-    onSubmitSuccess: React.PropTypes.func.isRequired,
+    acknowledgeNotification: React.PropTypes.func.isRequired,
+    api: React.PropTypes.object.isRequired,
+    configuredInviteKey: React.PropTypes.string.isRequired,
     inviteEmail: React.PropTypes.string,
-    trackMetric: React.PropTypes.func.isRequired
+    inviteKey: React.PropTypes.string,
+    notification: React.PropTypes.object,
+    onSubmit: React.PropTypes.func.isRequired,
+    trackMetric: React.PropTypes.func.isRequired,
+    working: React.PropTypes.bool.isRequired
   },
 
   formInputs: function() {
     return [
-      {name: 'fullName', label: 'Full name', placeholder: 'ex: Mary Smith'},
+      {name: 'fullName', label: 'Full name'},
       {
         name: 'username',
         label: 'Email',
@@ -45,16 +55,40 @@ var Signup = React.createClass({
       {
         name: 'password',
         label: 'Password',
-        type: 'password',
-        placeholder: '******'
+        type: 'password'
       },
       {
         name: 'passwordConfirm',
         label: 'Confirm password',
-        type: 'password',
-        placeholder: '******'
+        type: 'password'
       }
     ];
+  },
+
+  isWaitListed: function() {
+
+    var hasInviteKey = !_.isEmpty(this.props.inviteKey) || this.props.inviteKey === '';
+    var hasInviteEmail = !_.isEmpty(this.props.inviteEmail);
+
+    if (hasInviteKey && hasInviteEmail) {
+      // don't show waitlist if invited user to create account and join careteam
+      return false;
+    }
+    else if (hasInviteKey) {
+      // do we have a valid waitlist key?
+      if (_.isEmpty(this.props.configuredInviteKey) ||
+        this.props.inviteKey === this.props.configuredInviteKey) {
+        return false;
+      }
+      else {
+        return true;
+      }
+    }
+    return true;
+  },
+
+  componentWillMount: function() {
+    this.setState({loading: false, showWaitList: this.isWaitListed() });
   },
 
   getInitialState: function() {
@@ -65,7 +99,8 @@ var Signup = React.createClass({
     }
 
     return {
-      working: false,
+      loading: true,
+      showWaitList: false,
       formValues: formValues,
       validationErrors: {},
       notification: null
@@ -75,24 +110,31 @@ var Signup = React.createClass({
   render: function() {
     var form = this.renderForm();
     var inviteIntro = this.renderInviteIntroduction();
-
-    /* jshint ignore:start */
-    return (
-      <div className="signup">
-        <LoginNav
-          page="signup"
-          hideLinks={Boolean(this.props.inviteEmail)}
-          trackMetric={this.props.trackMetric} />
-        <LoginLogo />
-        {inviteIntro}
-        <div className="container-small-outer signup-form">
-          <div className="container-small-inner signup-form-box">
-            {form}
+    if (!this.state.loading) {
+      if (this.state.showWaitList) {
+        return (
+          <div className="waitlist">
+            <WaitList />
           </div>
-        </div>
-      </div>
-    );
-    /* jshint ignore:end */
+        );
+      } else {
+        return (
+          <div className="signup">
+            <LoginNav
+              page="signup"
+              hideLinks={Boolean(this.props.inviteEmail)}
+              trackMetric={this.props.trackMetric} />
+            <LoginLogo />
+            {inviteIntro}
+            <div className="container-small-outer signup-form">
+              <div className="container-small-inner signup-form-box">
+                {form}
+              </div>
+            </div>
+          </div>
+        );
+      }
+    }
   },
 
   renderInviteIntroduction: function() {
@@ -109,28 +151,27 @@ var Signup = React.createClass({
 
   renderForm: function() {
     var submitButtonText = 'Sign up';
-    if (this.state.working) {
+    if (this.props.working) {
       submitButtonText = 'Signing up...';
     }
 
-    /* jshint ignore:start */
     return (
       <SimpleForm
         inputs={this.formInputs()}
         formValues={this.state.formValues}
         validationErrors={this.state.validationErrors}
         submitButtonText={submitButtonText}
-        submitDisabled={this.state.working}
+        submitDisabled={this.props.working}
         onSubmit={this.handleSubmit}
-        notification={this.state.notification}/>
+        notification={this.state.notification || this.props.notification}/>
     );
-    /* jshint ignore:end */
+
   },
 
   handleSubmit: function(formValues) {
     var self = this;
 
-    if (this.state.working) {
+    if (this.props.working) {
       return;
     }
 
@@ -145,12 +186,12 @@ var Signup = React.createClass({
 
     formValues = this.prepareFormValuesForSubmit(formValues);
 
-    this.submitFormValues(formValues);
+    this.props.onSubmit(this.props.api, formValues);
   },
 
   resetFormStateBeforeSubmit: function(formValues) {
+    this.props.acknowledgeNotification('signingUp');
     this.setState({
-      working: true,
       formValues: formValues,
       validationErrors: {},
       notification: null
@@ -158,43 +199,17 @@ var Signup = React.createClass({
   },
 
   validateFormValues: function(formValues) {
-    var validationErrors = {};
-    var IS_REQUIRED = 'This field is required.';
-    var INVALID_EMAIL = 'Invalid email address.';
-    var SHORT_PASSWORD = 'Password must be at least ' + config.PASSWORD_MIN_LENGTH + ' characters long.';
+    var form = [
+      { type: 'name', name: 'fullName', label: 'full name', value: formValues.fullName },
+      { type: 'email', name: 'username', label: 'email address', value: formValues.username },
+      { type: 'password', name: 'password', label: 'password', value: formValues.password },
+      { type: 'confirmPassword', name: 'passwordConfirm', label: 'confirm password', value: formValues.passwordConfirm, prerequisites: { password: formValues.password }  }
+    ];
 
-    if (!formValues.fullName) {
-      validationErrors.fullName = IS_REQUIRED;
-    }
-
-    if (!formValues.username) {
-      validationErrors.username = IS_REQUIRED;
-    }
-
-    if (formValues.username && !utils.validateEmail(formValues.username)) {
-      validationErrors.username = INVALID_EMAIL;
-    }
-
-    if (!formValues.password) {
-      validationErrors.password = IS_REQUIRED;
-    }
-
-    if (formValues.password && formValues.password.length < config.PASSWORD_MIN_LENGTH) {
-      validationErrors.password = SHORT_PASSWORD;
-    }
-
-    if (formValues.password) {
-      if (!formValues.passwordConfirm) {
-        validationErrors.passwordConfirm = IS_REQUIRED;
-      }
-      else if (formValues.passwordConfirm !== formValues.password) {
-        validationErrors.passwordConfirm = 'Passwords don\'t match.';
-      }
-    }
+    var validationErrors = validateForm(form);
 
     if (!_.isEmpty(validationErrors)) {
       this.setState({
-        working: false,
         validationErrors: validationErrors,
         notification: {
           type: 'error',
@@ -216,30 +231,32 @@ var Signup = React.createClass({
       }
     };
   },
-
-  submitFormValues: function(formValues) {
-    var self = this;
-    var submit = this.props.onSubmit;
-
-    submit(formValues, function(err, result) {
-      if (err) {
-        var message = 'An error occured while signing up.';
-        if (err.status === 400) {
-          message = 'An account already exists for that email.';
-        }
-
-        self.setState({
-          working: false,
-          notification: {
-            type: 'error',
-            message: message
-          }
-        });
-        return;
-      }
-      self.props.onSubmitSuccess(result);
-    });
-  }
 });
 
-module.exports = Signup;
+/**
+ * Expose "Smart" Component that is connect-ed to Redux
+ */
+
+export function mapStateToProps(state) {
+  return {
+    notification: state.blip.working.signingUp.notification,
+    working: state.blip.working.signingUp.inProgress,
+  };
+}
+
+let mapDispatchToProps = dispatch => bindActionCreators({
+  onSubmit: actions.async.signup,
+  acknowledgeNotification: actions.sync.acknowledgeNotification
+}, dispatch);
+
+let mergeProps = (stateProps, dispatchProps, ownProps) => {
+  return Object.assign({}, stateProps, dispatchProps, {
+    configuredInviteKey: config.INVITE_KEY,
+    inviteKey: utils.getInviteKey(ownProps.location),
+    inviteEmail: utils.getInviteEmail(ownProps.location),
+    trackMetric: ownProps.routes[0].trackMetric,
+    api: ownProps.routes[0].api,
+  });
+};
+
+export default connect(mapStateToProps, mapDispatchToProps, mergeProps)(Signup);

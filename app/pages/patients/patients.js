@@ -1,4 +1,3 @@
-/** @jsx React.DOM */
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -14,46 +13,65 @@
  * not, you can obtain one from Tidepool Project at tidepool.org.
  */
 
-var React = require('react');
-var _ = require('lodash');
+import React from 'react';
+import { browserHistory, Link } from 'react-router';
+import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
 
-var config = require('../../config');
+import * as actions from '../../redux/actions';
+import utils from '../../core/utils';
 
-var personUtils = require('../../core/personutils');
-var PeopleList = require('../../components/peoplelist');
-var PersonCard = require('../../components/personcard');
-var Invitation = require('../../components/invitation');
+import _ from 'lodash';
+import cx from 'classnames';
 
-var Patients = React.createClass({
+import config from '../../config';
+
+import personUtils from '../../core/personutils';
+import PeopleList from '../../components/peoplelist';
+import Invitation from '../../components/invitation';
+import BrowserWarning from '../../components/browserwarning';
+
+export let Patients = React.createClass({
   propTypes: {
-    user: React.PropTypes.object,
-    fetchingUser: React.PropTypes.bool,
-    patients: React.PropTypes.array,
-    fetchingPatients: React.PropTypes.bool,
-    invites: React.PropTypes.array,
-    fetchingInvites: React.PropTypes.bool,
-    showingWelcomeTitle: React.PropTypes.bool,
-    showingWelcomeSetup: React.PropTypes.bool,
-    onHideWelcomeSetup: React.PropTypes.func,
+    clearPatientInView: React.PropTypes.func.isRequired,
+    fetchers: React.PropTypes.array.isRequired,
+    fetchingUser: React.PropTypes.bool.isRequired,
+    invites: React.PropTypes.array.isRequired,
+    loading: React.PropTypes.bool.isRequired,
+    location: React.PropTypes.object.isRequired,
+    loggedInUserId: React.PropTypes.string,
+    onAcceptInvitation: React.PropTypes.func.isRequired,
+    onDismissInvitation: React.PropTypes.func.isRequired,
+    onHideWelcomeSetup: React.PropTypes.func.isRequired,
+    onRemovePatient: React.PropTypes.func.isRequired,
+    patients: React.PropTypes.array.isRequired,
+    showWelcomeMessage: React.PropTypes.func.isRequired,
+    showingWelcomeMessage: React.PropTypes.bool,
     trackMetric: React.PropTypes.func.isRequired,
-    onAcceptInvitation: React.PropTypes.func,
-    onDismissInvitation: React.PropTypes.func,
-    onRemovePatient: React.PropTypes.func,
-    uploadUrl: React.PropTypes.string
+    uploadUrl: React.PropTypes.string.isRequired,
+    user: React.PropTypes.object
   },
 
   render: function() {
     var welcomeTitle = this.renderWelcomeTitle();
 
-    if (this.isLoading()) {
-      return (
-        <div className="container-box-outer">
-          <div className="patients js-patients-page">
+    if (this.props.loading) {
+      if (this.props.location.query.justLoggedIn) {
+        return (
+          <div>
             {welcomeTitle}
             {this.renderLoadingIndicator()}
           </div>
-        </div>
-      );
+        );
+      } else {
+        return (
+          <div className="container-box-outer">
+            <div className="patients js-patients-page">
+              {this.renderLoadingIndicator()}
+            </div>
+          </div>
+        );
+      }
     }
 
     var welcomeSetup = this.renderWelcomeSetup();
@@ -62,9 +80,14 @@ var Patients = React.createClass({
     var noPatientsSetupStorage = this.renderNoPatientsSetupStorageLink();
     var patients = this.renderPatients();
 
+    var backgroundClasses = cx({
+      'patients js-patients-page': true,
+      'patients-welcome js-patients-page': this.isShowingWelcomeTitle()
+    });
+
     return (
       <div className="container-box-outer">
-        <div className="patients js-patients-page">
+        <div className={backgroundClasses}>
           {welcomeTitle}
           {welcomeSetup}
           {noPatientsOrInvites}
@@ -84,7 +107,8 @@ var Patients = React.createClass({
     var self = this;
     var handleClickYes = function(e) {
       e.preventDefault();
-      self.props.onHideWelcomeSetup({route: '/patients/new'});
+      self.props.onHideWelcomeSetup();
+      browserHistory.push('/patients/new');
     };
     var handleClickNo = function(e) {
       e.preventDefault();
@@ -99,25 +123,24 @@ var Patients = React.createClass({
           {"Would you like to set up data storage for someone’s diabetes data?"}
         </div>
         <div className="patients-welcomesetup-actions">
-          <div><button className="btn btn-primary" onClick={handleClickYes}>{"Yes, let's set it up"}</button></div>
-          <div><button className="btn btn-tertiary" onClick={handleClickNo}>{"No, not now"}</button></div>
-          <div className="patients-welcomesetup-actions-help">{"(You can always create one later)"}</div>
+          <button className="btn btn-tertiary" onClick={handleClickNo}>{"No, not now"}</button>
+          <button className="btn btn-primary" onClick={handleClickYes}>{"Yes, let's set it up"}</button>
         </div>
       </div>
     );
   },
 
   renderInvitation: function(invitation, index) {
-    /* jshint ignore:start */
+    
     return (
       <Invitation
         key={invitation.key}
         invitation={invitation}
-        patientsComponent={this}
         onAcceptInvitation={this.props.onAcceptInvitation}
         onDismissInvitation={this.props.onDismissInvitation}
+        trackMetric={this.props.trackMetric}
       ></Invitation>);
-    /* jshint ignore:end */
+    
   },
   renderInvitations: function() {
     if (!this.hasInvites()) {
@@ -126,13 +149,13 @@ var Patients = React.createClass({
 
     var invitations = _.map(this.props.invites, this.renderInvitation);
 
-    /* jshint ignore:start */
+    
     return (
       <ul className='invitations'>
         {invitations}
       </ul>
     );
-    /* jshint ignore:end */
+    
   },
 
   renderNoPatientsOrInvitationsMessage: function() {
@@ -157,7 +180,7 @@ var Patients = React.createClass({
     return (
       <div className="patients-message">
         {"You can also "}
-        <a href="#/patients/new">{"setup data storage"}</a>
+        <Link to="/patients/new">{"setup data storage"}</Link>
         {" for someone’s diabetes data."}
       </div>
     );
@@ -168,7 +191,12 @@ var Patients = React.createClass({
       return null;
     }
 
-    var patients = this.getPatients();
+    if (!utils.isChrome()) {
+      return <BrowserWarning
+        trackMetric={this.props.trackMetric} />;
+    }
+
+    var patients = this.props.patients;
     patients = this.addLinkToPatients(patients);
 
     var addDataStorage = this.renderAddDataStorage();
@@ -183,7 +211,6 @@ var Patients = React.createClass({
           <div className='clear'></div>
           <PeopleList
             people={patients}
-            isPatientList={true}
             uploadUrl={this.props.uploadUrl}
             onClickPerson={this.handleClickPatient}
             onRemovePatient= {this.props.onRemovePatient}
@@ -191,20 +218,6 @@ var Patients = React.createClass({
         </div>
       </div>
     );
-  },
-
-  getPatients: function() {
-    var user = _.cloneDeep(this.props.user);
-    var patients = _.clone(this.props.patients) || [];
-
-    if(personUtils.isPatient(user)) {
-      user.permissions = {
-        root: {}
-      };
-      patients.push(user);
-    }
-
-    return patients;
   },
 
   renderAddDataStorage: function() {
@@ -215,13 +228,13 @@ var Patients = React.createClass({
     }
 
     return (
-      <a
+      <Link
         className="patients-new-account"
-        href="#/patients/new"
+        to="/patients/new"
         onClick={this.handleClickCreateProfile}>
         Setup data storage
         <i className="icon-add"></i>
-      </a>
+      </Link>
     );
   },
 
@@ -253,7 +266,7 @@ var Patients = React.createClass({
     return _.map(patients, function(patient) {
       patient = _.cloneDeep(patient);
       if (patient.userid) {
-        patient.link = '#/patients/' + patient.userid + '/data';
+        patient.link = '/patients/' + patient.userid + '/data';
       }
       return patient;
     });
@@ -268,16 +281,8 @@ var Patients = React.createClass({
     }
   },
 
-  isLoading: function() {
-    return (
-      this.props.fetchingUser ||
-      this.props.fetchingInvites ||
-      this.props.fetchingPatients
-    );
-  },
-
   isShowingWelcomeTitle: function() {
-    return this.props.showingWelcomeTitle;
+    return this.props.showingWelcomeMessage;
   },
 
   hasInvites: function() {
@@ -285,12 +290,146 @@ var Patients = React.createClass({
   },
 
   isShowingWelcomeSetup: function() {
-    return this.props.showingWelcomeSetup && !this.hasInvites();
+    return this.props.showingWelcomeMessage && !this.hasInvites();
   },
 
   hasPatients: function() {
     return !_.isEmpty(this.props.patients) || personUtils.isPatient(this.props.user);
+  },
+
+  doFetching: function(nextProps) {
+
+    if (!nextProps.fetchers) {
+      return
+    }
+
+    nextProps.fetchers.forEach(fetcher => { 
+      fetcher();
+    });
+  },
+  componentWillMount: function() {
+    if (this.props.clearPatientInView) {
+      this.props.clearPatientInView();
+    }
+  },
+
+  /**
+   * After rendering for first time
+   * begin fetching any required data
+   */
+  componentDidMount: function() {
+    if (this.props.trackMetric) {
+      this.props.trackMetric('Viewed Care Team List');
+    }
+    
+    this.doFetching(this.props);
+  },
+
+  componentWillReceiveProps: function(nextProps) {
+    let { loading, loggedInUserId, patients, invites, location, showingWelcomeMessage } = nextProps;
+    
+    if (!loading && loggedInUserId && location.query.justLoggedIn) {
+      if (patients.length === 1 && invites.length === 0) {
+        let patient = patients[0];
+        browserHistory.push(`/patients/${patient.userid}/data`);
+      } else if (patients.length === 0 && invites.length === 0 && showingWelcomeMessage === null) {
+        this.props.showWelcomeMessage();
+      }
+    }
   }
 });
 
-module.exports = Patients;
+/**
+ * Expose "Smart" Component that is connect-ed to Redux
+ */
+
+let getFetchers = (dispatchProps, ownProps, api) => {
+  return [
+    dispatchProps.fetchPendingReceivedInvites.bind(null, api),
+    dispatchProps.fetchPatients.bind(null, api)
+  ];
+};
+
+
+export function mapStateToProps(state) {
+  var user = null;
+  let patientMap = {};
+
+  if (state.blip.allUsersMap) {
+    if (state.blip.loggedInUserId) {
+      user = state.blip.allUsersMap[state.blip.loggedInUserId];
+    }
+
+    if (state.blip.targetUserId) {
+      patientMap[state.blip.targetUserId] = state.blip.allUsersMap[state.blip.targetUserId];
+      // to pass through the permissions of the logged-in user on the target (usually self)
+      if (state.blip.permissionsOfMembersInTargetCareTeam[state.blip.targetUserId]) {
+        patientMap[state.blip.targetUserId].permissions = state.blip.permissionsOfMembersInTargetCareTeam[state.blip.targetUserId];
+      }
+    }
+
+    if (state.blip.membershipInOtherCareTeams) {
+      state.blip.membershipInOtherCareTeams.forEach((key) => {
+        patientMap[key] = state.blip.allUsersMap[key];
+      });
+    }
+
+    if (state.blip.membershipPermissionsInOtherCareTeams) {
+      var permissions = state.blip.membershipPermissionsInOtherCareTeams;
+      var keys = Object.keys(state.blip.membershipPermissionsInOtherCareTeams);
+      keys.forEach((key) => {
+        if (!patientMap[key]) {
+          patientMap[key] = state.blip.allUsersMap[key];
+        }
+        patientMap[key].permissions = permissions[key];
+      });
+    }
+  }
+
+  let { 
+    fetchingUser: { inProgress: fetchingUser },
+    fetchingPatients: { inProgress: fetchingPatients },
+    fetchingPendingReceivedInvites: { inProgress: fetchingInvites },
+  } = state.blip.working;
+
+  return {
+    user: user,
+    loading: fetchingUser || fetchingPatients || fetchingInvites,
+    loggedInUserId: state.blip.loggedInUserId,
+    fetchingUser: fetchingUser,
+    patients: Object.keys(patientMap).map((key) => patientMap[key]),
+    invites: state.blip.pendingReceivedInvites,
+    showingWelcomeMessage: state.blip.showingWelcomeMessage
+  }
+};
+
+let mapDispatchToProps = dispatch => bindActionCreators({
+  acceptReceivedInvite: actions.async.acceptReceivedInvite,
+  rejectReceivedInvite: actions.async.rejectReceivedInvite,
+  removePatient: actions.async.removeMembershipInOtherCareTeam,
+  fetchPendingReceivedInvites: actions.async.fetchPendingReceivedInvites,
+  fetchPatients: actions.async.fetchPatients,
+  clearPatientInView: actions.sync.clearPatientInView,
+  showWelcomeMessage: actions.sync.showWelcomeMessage,
+  onHideWelcomeSetup: actions.sync.hideWelcomeMessage
+}, dispatch);
+
+let mergeProps = (stateProps, dispatchProps, ownProps) => {
+  var api = ownProps.routes[0].api;
+  return Object.assign(
+    {},
+    _.pick(dispatchProps, ['clearPatientInView', 'showWelcomeMessage', 'onHideWelcomeSetup']),
+    stateProps,
+    {
+      fetchers: getFetchers(dispatchProps, ownProps, api),
+      location: ownProps.location,
+      uploadUrl: api.getUploadUrl(),
+      onAcceptInvitation: dispatchProps.acceptReceivedInvite.bind(null, api),
+      onDismissInvitation: dispatchProps.rejectReceivedInvite.bind(null, api),
+      onRemovePatient: dispatchProps.removePatient.bind(null, api),
+      trackMetric: ownProps.routes[0].trackMetric
+    }
+  );
+};
+
+export default connect(mapStateToProps, mapDispatchToProps, mergeProps)(Patients);

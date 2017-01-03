@@ -1,4 +1,4 @@
-/** @jsx React.DOM */
+
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -14,25 +14,32 @@
  * not, you can obtain one from Tidepool Project at tidepool.org.
  */
 
-var React = require('react');
-var _ = require('lodash');
-var moment = require('moment');
+import React from 'react';
+import { Link } from 'react-router';
+import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
 
-var personUtils = require('../../core/personutils');
-var InputGroup = require('../../components/inputgroup');
-var DatePicker = require('../../components/datepicker');
-var personUtils = require('../../core/personutils');
-var datetimeUtils = require('../../core/datetimeutils');
+import _ from 'lodash';
+import sundial from 'sundial';
+import { validateForm } from '../../core/validation';
+
+import * as actions from '../../redux/actions';
+
+import InputGroup from '../../components/inputgroup';
+import DatePicker from '../../components/datepicker';
+import SimpleForm from '../../components/simpleform';
+import personUtils from '../../core/personutils';
 
 var MODEL_DATE_FORMAT = 'YYYY-MM-DD';
 
-var PatientNew = React.createClass({
+export let PatientNew = React.createClass({
   propTypes: {
-    user: React.PropTypes.object,
-    fetchingUser: React.PropTypes.bool,
+    fetchingUser: React.PropTypes.bool.isRequired,
+    notification: React.PropTypes.object,
     onSubmit: React.PropTypes.func.isRequired,
-    onSubmitSuccess: React.PropTypes.func,
-    trackMetric: React.PropTypes.func.isRequired
+    trackMetric: React.PropTypes.func.isRequired,
+    user: React.PropTypes.object,
+    working: React.PropTypes.bool.isRequired
   },
 
   formInputs: [
@@ -40,12 +47,13 @@ var PatientNew = React.createClass({
       name: 'isOtherPerson',
       type: 'radios',
       items: [
-        {value: 'no', label: 'This is for me, I have type 1 diabetes'},
-        {value: 'yes', label: 'This is for someone I care for who has type 1 diabetes'}
+        {value: false, label: 'This is for me, I have type 1 diabetes'},
+        {value: true, label: 'This is for someone I care for who has type 1 diabetes'}
       ]
     },
     {
       name: 'fullName',
+      type: 'text',
       placeholder: 'Full name'
     },
     {
@@ -75,6 +83,12 @@ var PatientNew = React.createClass({
       validationErrors: {},
       notification: null
     };
+  },
+
+  componentDidMount: function() {
+    if (this.props.trackMetric) {
+      this.props.trackMetric('Viewed Profile Create');
+    }
   },
 
   componentWillReceiveProps: function(nextProps) {
@@ -126,91 +140,21 @@ var PatientNew = React.createClass({
 
   renderForm: function() {
     return (
-        <form className="PatientNew-form">
-          <div className="PatientNew-formInputs">
-            {this.renderInputs()}
-          </div>
-          <div className="PatientNew-formActions">
-            {this.renderButtons()}
-            {this.renderNotification()}
-          </div>
-        </form>
+      <SimpleForm
+        inputs={this.formInputs}
+        formValues={this.state.formValues}
+        validationErrors={this.state.validationErrors}
+        submitButtonText={this.getSubmitButtonText()}
+        submitDisabled={this.props.working}
+        onSubmit={this.handleSubmit}
+        onChange={this.handleInputChange}
+        notification={this.state.notification || this.props.notification}/>
     );
-  },
 
-  renderInputs: function() {
-    return _.map(this.formInputs, this.renderInput);
-  },
-
-  renderInput: function(input) {
-    var name = input.name;
-    var value = this.state.formValues[name];
-
-    if (name === 'isOtherPerson') {
-      value = this.state.formValues.isOtherPerson ? 'yes' : 'no';
-    }
-
-    if (input.type === 'datepicker') {
-      return this.renderDatePicker(input);
-    }
-
-    return (
-      <div key={name} className={'PatientNew-inputGroup PatientNew-inputGroup--' + name}>
-        <InputGroup
-          name={name}
-          label={input.label}
-          value={value}
-          items={input.items}
-          error={this.state.validationErrors[name]}
-          type={input.type}
-          placeholder={input.placeholder}
-          disabled={this.isFormDisabled() || input.disabled}
-          onChange={this.handleInputChange}/>
-      </div>
-    );
-  },
-
-  renderDatePicker: function(input) {
-    var name = input.name;
-    var classes = 'PatientNew-datePicker PatientNew-inputGroup PatientNew-inputGroup--' + name;
-    var error = this.state.validationErrors[name];
-    var message;
-    if (error) {
-      classes = classes + ' PatientNew-datePicker--error';
-      message = <div className="PatientNew-datePickerMessage">{error}</div>;
-    }
-
-    return (
-      <div key={name} className={classes}>
-        <div>
-          <label className="PatientNew-datePickerLabel">{input.label}</label>
-          <DatePicker
-            name={name}
-            value={this.state.formValues[name]}
-            disabled={this.isFormDisabled() || input.disabled}
-            onChange={this.handleInputChange} />
-        </div>
-        {message}
-      </div>
-    );
-  },
-
-  renderButtons: function() {
-    return (
-      <div>
-        <a href="#/" className="btn btn-secondary PatientNew-cancel">Cancel</a>
-        <button
-          className="btn btn-primary PatientNew-submit"
-          onClick={this.handleSubmit}
-          disabled={this.isFormDisabled()}>
-          {this.getSubmitButtonText()}
-        </button>
-      </div>
-    );
   },
 
   renderNotification: function() {
-    var notification = this.state.notification;
+    var notification = this.props.notification;
     if (notification && notification.message) {
       var type = notification.type || 'alert';
       return (
@@ -223,7 +167,7 @@ var PatientNew = React.createClass({
   },
 
   getSubmitButtonText: function() {
-    if (this.state.working) {
+    if (this.props.working) {
       return 'Setting up...';
     }
     return 'Set up';
@@ -241,8 +185,9 @@ var PatientNew = React.createClass({
     }
 
     var formValues = _.clone(this.state.formValues);
+
     if (key === 'isOtherPerson') {
-      var isOtherPerson = (attributes.value === 'yes') ? true : false;
+      var isOtherPerson = (attributes.value === 'true') ? true : false;
       var fullName = isOtherPerson ? '' : this.getUserFullName();
       formValues = _.assign(formValues, {
         isOtherPerson: isOtherPerson,
@@ -256,101 +201,30 @@ var PatientNew = React.createClass({
     this.setState({formValues: formValues});
   },
 
-  handleSubmit: function(e) {
-    if (e) {
-      e.preventDefault();
-    }
-
-    var formValues = this.state.formValues;
-
+  handleSubmit: function(formValues) {
     this.resetFormStateBeforeSubmit(formValues);
 
-    formValues = this.prepareFormValuesForValidation(formValues);
-
     var validationErrors = this.validateFormValues(formValues);
+
     if (!_.isEmpty(validationErrors)) {
       return;
     }
 
     formValues = this.prepareFormValuesForSubmit(formValues);
-
-    this.submitFormValues(formValues);
-  },
-
-  resetFormStateBeforeSubmit: function(formValues) {
-    this.setState({
-      working: true,
-      formValues: formValues,
-      validationErrors: {},
-      notification: null
-    });
-  },
-
-  prepareFormValuesForValidation: function(formValues) {
-    formValues = _.clone(formValues);
-
-    if (this.isDateObjectComplete(formValues.birthday)) {
-      formValues.birthday = moment(formValues.birthday)
-        .format(MODEL_DATE_FORMAT);
-    }
-    else {
-      formValues.birthday = null;
-    }
-
-    if (this.isDateObjectComplete(formValues.diagnosisDate)) {
-      formValues.diagnosisDate = moment(formValues.diagnosisDate)
-        .format(MODEL_DATE_FORMAT);
-    }
-    else {
-      formValues.diagnosisDate = null;
-    }
-
-    if (!formValues.about) {
-      formValues = _.omit(formValues, 'about');
-    }
-
-    return formValues;
-  },
-
-  isDateObjectComplete: function(dateObj) {
-    if (!dateObj) {
-      return false;
-    }
-    return !(_.isEmpty(dateObj.year) || _.isEmpty(dateObj.month) || _.isEmpty(dateObj.day));
+    this.props.onSubmit(formValues);
   },
 
   validateFormValues: function(formValues) {
-    var validationErrors = {};
-    var IS_REQUIRED = 'We need this information.';
-    var IS_NOT_VALID_DATE = 'Hmm, this date doesn\'t look right.';
-
-    if (!formValues.fullName) {
-      validationErrors.fullName = IS_REQUIRED;
-    }
-
-    if (!formValues.birthday) {
-      validationErrors.birthday = IS_REQUIRED;
-    }
-    else if (!datetimeUtils.isValidDate(formValues.birthday)) {
-      validationErrors.birthday = IS_NOT_VALID_DATE;
-    }
-
-    if (!formValues.diagnosisDate) {
-      validationErrors.diagnosisDate = IS_REQUIRED;
-    }
-    else if (!datetimeUtils.isValidDate(formValues.diagnosisDate)) {
-      validationErrors.diagnosisDate = IS_NOT_VALID_DATE;
-    }
-
-    var maxLength = 256;
-    if (formValues.about && formValues.about.length > maxLength) {
-      validationErrors.about =
-        'Please keep this text under ' + maxLength + ' characters.';
-    }
+    var form = [
+      { type: 'name', name: 'fullName', label: 'full name', value: formValues.fullName },
+      { type: 'date', name: 'birthday', label: 'birthday', value: formValues.birthday },
+      { type: 'diagnosisDate', name: 'diagnosisDate', label: 'diagnosis date', value: formValues.diagnosisDate, prerequisites: { birthday: formValues.birthday } },
+      { type: 'about', name: 'about', label: 'about', value: formValues.about}
+    ];
+    var validationErrors = validateForm(form);
 
     if (!_.isEmpty(validationErrors)) {
       this.setState({
-        working: false,
         validationErrors: validationErrors
       });
     }
@@ -358,11 +232,38 @@ var PatientNew = React.createClass({
     return validationErrors;
   },
 
+  resetFormStateBeforeSubmit: function(formValues) {
+    this.setState({
+      working: true,
+      formValues: formValues,
+      validationErrors: {}
+    });
+  },
+
+  // because JavaScript Date will coerce impossible dates into possible ones with
+  // no opportunity for exposing the error to the user
+  // i.e., mis-typing 02/31/2014 instead of 03/31/2014 will be saved as 03/03/2014!
+  makeRawDateString: function(dateObj){
+
+    var mm = ''+(parseInt(dateObj.month) + 1); //as a string, add 1 because 0-indexed
+    mm = (mm.length === 1) ? '0'+ mm : mm;
+    var dd = (dateObj.day.length === 1) ? '0'+dateObj.day : dateObj.day;
+
+    return dateObj.year+'-'+mm+'-'+dd;
+  },
+
+  isDateObjectComplete: function(dateObj) {
+    if (!dateObj) {
+      return false;
+    }
+    return (!_.isEmpty(dateObj.year) && dateObj.year.length === 4 && !_.isEmpty(dateObj.month) && !_.isEmpty(dateObj.day));
+  },
+
   prepareFormValuesForSubmit: function(formValues) {
     var profile = {};
     var patient = {
-      birthday: formValues.birthday,
-      diagnosisDate: formValues.diagnosisDate
+      birthday: this.makeRawDateString(formValues.birthday),
+      diagnosisDate: this.makeRawDateString(formValues.diagnosisDate)
     };
 
     if (formValues.about) {
@@ -380,30 +281,42 @@ var PatientNew = React.createClass({
 
     profile.patient = patient;
 
-    return {profile: profile};
-  },
-
-  submitFormValues: function(formValues) {
-    var self = this;
-    var submit = this.props.onSubmit;
-    var submitSuccess = this.props.onSubmitSuccess;
-
-    submit(formValues, function(err, result) {
-      if (err) {
-        self.setState({
-          working: false,
-          notification: {
-            type: 'error',
-            message: 'An error occured while creating data storage.'
-          }
-        });
-        return;
-      }
-      if (submitSuccess) {
-        submitSuccess(result);
-      }
-    });
+    return {
+      profile: profile
+    };
   }
 });
 
-module.exports = PatientNew;
+/**
+ * Expose "Smart" Component that is connect-ed to Redux
+ */
+
+export function mapStateToProps(state) {
+  var user = null;
+  if (state.blip.allUsersMap){
+    if (state.blip.loggedInUserId) {
+      user = state.blip.allUsersMap[state.blip.loggedInUserId];
+    }
+  }
+
+  return {
+    user: user,
+    fetchingUser: state.blip.working.fetchingUser.inProgress,
+    working: state.blip.working.settingUpDataStorage.inProgress,
+    notification: state.blip.working.settingUpDataStorage.notification
+  };
+}
+
+let mapDispatchToProps = dispatch => bindActionCreators({
+  setupDataStorage: actions.async.setupDataStorage
+}, dispatch);
+
+let mergeProps = (stateProps, dispatchProps, ownProps) => {
+  var api = ownProps.routes[0].api;
+  return Object.assign({}, stateProps, {
+    onSubmit: dispatchProps.setupDataStorage.bind(null, api),
+    trackMetric: ownProps.routes[0].trackMetric
+  });
+};
+
+export default connect(mapStateToProps, mapDispatchToProps, mergeProps)(PatientNew);

@@ -1,4 +1,4 @@
-/** @jsx React.DOM */
+
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -15,6 +15,7 @@
  */
 
 var React = require('react');
+var Link = require('react-router').Link;
 
 var logoSrc = require('./images/tidepool-logo-370x40.png');
 
@@ -29,7 +30,7 @@ var LoginNav = React.createClass({
     var logo = this.renderLogo();
     var link = this.renderLink();
 
-    /* jshint ignore:start */
+    
     return (
       <div className="container-nav-outer login-nav">
         <div className="container-nav-inner nav-wrapper">
@@ -46,11 +47,11 @@ var LoginNav = React.createClass({
         </div>
       </div>
     );
-    /* jshint ignore:end */
+    
   },
 
   renderLogo: function() {
-    /* jshint ignore:start */
+    
     return (
       <a
         href="http://tidepool.org/"
@@ -59,7 +60,7 @@ var LoginNav = React.createClass({
         <img src={logoSrc} alt="Tidepool"/>
       </a>
     );
-    /* jshint ignore:end */
+    
   },
 
   renderLink: function() {
@@ -69,7 +70,7 @@ var LoginNav = React.createClass({
 
     var self = this;
     var page = this.props.page;
-    var href = '#/signup';
+    var href = '/signup';
     var className = 'js-signup-link';
     var icon = 'icon-add';
     var text = 'Sign up';
@@ -78,7 +79,7 @@ var LoginNav = React.createClass({
     };
 
     if (page === 'signup') {
-      href = '#/login';
+      href = '/login';
       className = 'js-login-link';
       icon = 'icon-login';
       text = 'Log in';
@@ -88,11 +89,11 @@ var LoginNav = React.createClass({
     }
 
     return (
-      /* jshint ignore:start */
-      <a
-        href={href}
-        className={className}><i className={icon}></i>{' ' + text}</a>
-      /* jshint ignore:end */
+      
+      <Link
+        to={href}
+        className={className}><i className={icon}></i>{' ' + text}</Link>
+      
     );
   }
 });

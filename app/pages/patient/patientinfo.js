@@ -1,4 +1,4 @@
-/** @jsx React.DOM */
+
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -15,29 +15,30 @@
  */
 
 var React = require('react');
+var Link = require('react-router').Link;
 var _ = require('lodash');
-var moment = require('moment');
+var sundial = require('sundial');
 
 var personUtils = require('../../core/personutils');
-var datetimeUtils = require('../../core/datetimeutils');
 
-var SERVER_DATE_FORMAT = 'YYYY-MM-DD';
+//date masks we use
 var FORM_DATE_FORMAT = 'MM/DD/YYYY';
+var SERVER_DATE_FORMAT = 'YYYY-MM-DD';
 
 var PatientInfo = React.createClass({
   propTypes: {
-    user: React.PropTypes.object,
-    fetchingUser: React.PropTypes.bool,
+    fetchingPatient: React.PropTypes.bool.isRequired,
+    fetchingUser: React.PropTypes.bool.isRequired,
+    onUpdatePatient: React.PropTypes.func.isRequired,
     patient: React.PropTypes.object,
-    fetchingPatient: React.PropTypes.bool,
-    onUpdatePatient: React.PropTypes.func,
-    trackMetric: React.PropTypes.func.isRequired
+    trackMetric: React.PropTypes.func.isRequired,
+    user: React.PropTypes.object
   },
 
   getInitialState: function() {
     return {
       editing: false,
-      notification: null
+      validationErrors: {}
     };
   },
 
@@ -174,7 +175,7 @@ var PatientInfo = React.createClass({
   toggleEdit: function() {
     this.setState({
       editing: !this.state.editing,
-      notification: null
+      validationErrors: {}
     });
   },
 
@@ -188,12 +189,44 @@ var PatientInfo = React.createClass({
       self.toggleEdit();
     };
 
+    return (
+      <div className="PatientInfo">
+        <div className="PatientPage-sectionTitle">Profile</div>
+        <div className="PatientInfo-controls">
+          <button key="cancel" className="PatientInfo-button PatientInfo-button--secondary" type="button" disabled={this.state.working} onClick={handleCancel}>Cancel</button>
+          {this.renderSubmit()}
+        </div>
+        <div className="clear"></div>
+        <div className="PatientInfo-content">
+          <div className="PatientInfo-head">
+            <div className="PatientInfo-picture"></div>
+            <div className="PatientInfo-blocks">
+              {this.renderFullNameInput(formValues)}
+              {this.renderBirthdayInput(formValues)}
+              {this.renderDiagnosisDateInput(formValues)}
+            </div>
+          </div>
+          {this.renderAboutInput(formValues)}
+        </div>
+      </div>
+    );
+  },
+
+  renderFullNameInput: function(formValues) {
+    
+    var fullNameNode, errorElem, classes;
+    var error = this.state.validationErrors.fullName;
     // Legacy: revisit when proper "child accounts" are implemented
-    var fullNameNode;
-    if (personUtils.patientIsOtherPerson(patient)) {
+    if (personUtils.patientIsOtherPerson(this.props.patient)) {
+      classes = 'PatientInfo-input';
+      if (error) {
+        classes += ' PatientInfo-input-error';
+        errorElem = <div className="PatientInfo-error-message">{error}</div>;
+      }
       fullNameNode = (
-        <div className="">
+        <div className={classes}>
           <input className="PatientInfo-input" id="fullName" ref="fullName" placeholder="Full name" defaultValue={formValues.fullName} />
+          {errorElem}
         </div>
       );
     }
@@ -201,54 +234,66 @@ var PatientInfo = React.createClass({
       formValues = _.omit(formValues, 'fullName');
       fullNameNode = (
         <div className="PatientInfo-block PatientInfo-block--withArrow">
-          {this.getDisplayName(patient)}
+          {this.getDisplayName(this.props.patient)}
           {' (edit in '}
-          <a href="#/profile">account</a>
+          <Link to="/profile">account</Link>
           {')'}
         </div>
       );
     }
 
-    return (
-      <div className="PatientInfo">
-        <div className="PatientPage-sectionTitle">Profile</div>
-        <div className="PatientInfo-controls">
-          <button key="cancel" className="PatientInfo-button PatientInfo-button--secondary" type="button" disabled={this.state.working} onClick={handleCancel}>Cancel</button>
-          {this.renderSubmit()}
-          {this.renderNotification()}
-        </div>
-        <div className="clear"></div>
-        <div className="PatientInfo-content">
-          <div className="PatientInfo-head">
-            <div className="PatientInfo-picture"></div>
-            <div className="PatientInfo-blocks">
-              <div className="PatientInfo-blockRow">
-                {fullNameNode}
-              </div>
-              <div className="PatientInfo-blockRow">
-                <div className="">
-                  <label className="PatientInfo-label" htmlFor="birthday">Date of birth</label>
-                  <input className="PatientInfo-input" id="birthday" ref="birthday" placeholder={FORM_DATE_FORMAT} defaultValue={formValues.birthday} />
-                </div>
-              </div>
-              <div className="PatientInfo-blockRow">
-                <div className="">
-                  <label className="PatientInfo-label" htmlFor="diagnosisDate">Date of diagnosis</label>
-                  <input className="PatientInfo-input" id="diagnosisDate" ref="diagnosisDate" placeholder={FORM_DATE_FORMAT} defaultValue={formValues.diagnosisDate} />
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="PatientInfo-bio">
-            <textarea className="PatientInfo-input" ref="about"
-              placeholder="Anything you would like to share?"
-              rows="3"
-              defaultValue={formValues.about}>
-            </textarea>
-          </div>
-        </div>
+    return (<div className="PatientInfo-blockRow">
+      {fullNameNode}
+    </div>);
+  },
+
+  renderBirthdayInput: function(formValues) {
+    var classes = 'PatientInfo-input', errorElem;
+    var error = this.state.validationErrors.birthday;
+    if (error) {
+      classes += ' PatientInfo-input-error';
+      errorElem = <div className="PatientInfo-error-message">{error}</div>;
+    }
+    return (<div className="PatientInfo-blockRow">
+      <div className="">
+        <label className="PatientInfo-label" htmlFor="birthday">Date of birth</label>
+        <input className={classes} id="birthday" ref="birthday" placeholder={FORM_DATE_FORMAT} defaultValue={formValues.birthday} />
+        {errorElem}
       </div>
-    );
+    </div>);
+  },
+
+  renderDiagnosisDateInput: function(formValues) {
+    var classes = 'PatientInfo-input', errorElem;
+    var error = this.state.validationErrors.diagnosisDate;
+    if (error) {
+      classes += ' PatientInfo-input-error';
+      errorElem = <div className="PatientInfo-error-message">{error}</div>;
+    }
+    return (<div className="PatientInfo-blockRow">
+      <div className="">
+        <label className="PatientInfo-label" htmlFor="diagnosisDate">Date of diagnosis</label>
+        <input className={classes} id="diagnosisDate" ref="diagnosisDate" placeholder={FORM_DATE_FORMAT} defaultValue={formValues.diagnosisDate} />
+        {errorElem}
+      </div>
+    </div>);
+  },
+
+  renderAboutInput: function(formValues) {
+    var classes = 'PatientInfo-input', errorElem;
+    var error = this.state.validationErrors.about;
+    if (error) {
+      classes += ' PatientInfo-input-error';
+      errorElem = <div className="PatientInfo-error-message">{error}</div>;
+    }
+    return (<div className="PatientInfo-bio">
+      <textarea className={classes} ref="about"
+        placeholder="Anything you would like to share?"
+        rows="3"
+        defaultValue={formValues.about}>
+      </textarea>
+      {errorElem}
+    </div>);
   },
 
   renderSubmit: function() {
@@ -260,19 +305,6 @@ var PatientInfo = React.createClass({
     );
   },
 
-  renderNotification: function() {
-    var notification = this.state.notification;
-    if (!notification) {
-      return null;
-    }
-
-    return (
-      <div className={'PatientInfo-notification PatientInfo-notification--' + notification.type}>
-        {notification.message}
-      </div>
-    );
-  },
-
   isSamePersonUserAndPatient: function() {
     return personUtils.isSame(this.props.user, this.props.patient);
   },
@@ -281,18 +313,31 @@ var PatientInfo = React.createClass({
     return personUtils.patientFullName(patient);
   },
 
-  getAgeText: function(patient) {
+  getAgeText: function(patient, currentDate) {
     var patientInfo = personUtils.patientInfo(patient) || {};
     var birthday = patientInfo.birthday;
 
     if (!birthday) {
       return;
     }
+    
+    var now = new Date();
+    currentDate = currentDate || Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    var yrsAgo = sundial.dateDifference(currentDate, birthday, 'years');
+    
+    if (yrsAgo === 1) {
+      return '1 year old';
+    } else if (yrsAgo > 1) {
+      return yrsAgo +' years old';
+    } else if (yrsAgo === 0) {
+      return 'Born this year';
+    } else {
+      return 'Birthdate not known';
+    }
 
-    return datetimeUtils.yearsOldText(birthday);
   },
 
-  getDiagnosisText: function(patient) {
+  getDiagnosisText: function(patient, currentDate) {
     var patientInfo = personUtils.patientInfo(patient) || {};
     var diagnosisDate = patientInfo.diagnosisDate;
 
@@ -300,7 +345,22 @@ var PatientInfo = React.createClass({
       return;
     }
 
-    return 'Diagnosed ' + datetimeUtils.yearsAgoText(diagnosisDate);
+    
+    var now = new Date();
+    currentDate = currentDate || Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    var yrsAgo = sundial.dateDifference(currentDate, diagnosisDate, 'years');
+
+    if (yrsAgo === 0) {
+      return 'Diagnosed this year';
+    } else if (yrsAgo === 1) {
+      return 'Diagnosed 1 year ago';
+    } else if (yrsAgo > 1) {
+      return 'Diagnosed ' + yrsAgo + ' years ago';
+    } else if (yrsAgo === 0) {
+      return 'Diagnosed this year';
+    } else {
+      return 'Diagnosis date not known';
+    }
   },
 
   getAboutText: function(patient) {
@@ -308,28 +368,38 @@ var PatientInfo = React.createClass({
     return patientInfo.about;
   },
 
+  /**
+   * Given a patient object, extract the values from it 
+   * that needs to be displayed on the patientinfo form
+   * 
+   * @param  {Object} patient
+   * @return {Object} 
+   */
   formValuesFromPatient: function(patient) {
-    if (!patient) {
+    if (!_.isPlainObject(patient) || _.isEmpty(patient)) {
       return {};
     }
 
     var formValues = {};
     var patientInfo = personUtils.patientInfo(patient);
+    var name = personUtils.patientFullName(patient);
 
-    formValues.fullName = personUtils.patientFullName(patient);
-
-    if (patientInfo.birthday) {
-      formValues.birthday = moment(patientInfo.birthday)
-        .format(FORM_DATE_FORMAT);
+    if (name) {
+      formValues.fullName = name;
     }
 
-    if (patientInfo.diagnosisDate) {
-      formValues.diagnosisDate = moment(patientInfo.diagnosisDate)
-        .format(FORM_DATE_FORMAT);
-    }
+    if (patientInfo) {
+      if (patientInfo.birthday) {
+        formValues.birthday =  sundial.translateMask(patientInfo.birthday, SERVER_DATE_FORMAT, FORM_DATE_FORMAT);
+      }
 
-    if (patientInfo.about) {
-      formValues.about = patientInfo.about;
+      if (patientInfo.diagnosisDate) {
+        formValues.diagnosisDate = sundial.translateMask(patientInfo.diagnosisDate, SERVER_DATE_FORMAT, FORM_DATE_FORMAT);
+      }
+
+      if (patientInfo.about) {
+        formValues.about = patientInfo.about;
+      }
     }
 
     return formValues;
@@ -339,11 +409,14 @@ var PatientInfo = React.createClass({
     e.preventDefault();
     var formValues = this.getFormValues();
 
-    this.setState({notification: null});
-    var validationError = this.validateFormValues(formValues);
-    if (validationError) {
+    this.setState({validationErrors: {}});
+   
+    var isNameRequired = personUtils.patientIsOtherPerson(this.props.patient);
+    var validationErrors = personUtils.validateFormValues(formValues, isNameRequired,  FORM_DATE_FORMAT);
+    
+    if (!_.isEmpty(validationErrors)) {
       this.setState({
-        notification: {type: 'error', message: validationError}
+        validationErrors: validationErrors
       });
       return;
     }
@@ -360,34 +433,10 @@ var PatientInfo = React.createClass({
       'about'
     ], function(acc, key, value) {
       if (self.refs[key]) {
-        acc[key] = self.refs[key].getDOMNode().value;
+        acc[key] = self.refs[key].value;
       }
       return acc;
     }, {});
-  },
-
-  validateFormValues: function(formValues) {
-    // Legacy: revisit when proper "child accounts" are implemented
-    if (personUtils.patientIsOtherPerson(this.props.patient) &&
-        !formValues.fullName) {
-      return 'Full name is required';
-    }
-
-    var birthday = formValues.birthday;
-    if (!(birthday && datetimeUtils.isValidDate(birthday))) {
-      return 'Date of birth needs to be a valid date';
-    }
-
-    var diagnosisDate = formValues.diagnosisDate;
-    if (!(diagnosisDate && datetimeUtils.isValidDate(diagnosisDate))) {
-      return 'Diagnosis date needs to be a valid date';
-    }
-
-    var maxLength = 256;
-    var about = formValues.about;
-    if (about && about.length > maxLength) {
-      return 'Please keep "about" text under ' + maxLength + ' characters';
-    }
   },
 
   submitFormValues: function(formValues) {
@@ -406,13 +455,11 @@ var PatientInfo = React.createClass({
     }
 
     if (formValues.birthday) {
-      formValues.birthday = moment(formValues.birthday, FORM_DATE_FORMAT)
-        .format(SERVER_DATE_FORMAT);
+      formValues.birthday =  sundial.translateMask(formValues.birthday, FORM_DATE_FORMAT, SERVER_DATE_FORMAT);
     }
 
     if (formValues.diagnosisDate) {
-      formValues.diagnosisDate = moment(formValues.diagnosisDate, FORM_DATE_FORMAT)
-        .format(SERVER_DATE_FORMAT);
+      formValues.diagnosisDate = sundial.translateMask(formValues.diagnosisDate, FORM_DATE_FORMAT, SERVER_DATE_FORMAT);
     }
 
     if (!formValues.about) {

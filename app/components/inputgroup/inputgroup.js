@@ -1,4 +1,4 @@
-/** @jsx React.DOM */
+
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -17,18 +17,22 @@
 var React = require('react');
 var _ = require('lodash');
 
+var DatePicker = require('../datepicker');
+
 // Input with label and validation error message
 var InputGroup = React.createClass({
   propTypes: {
     name: React.PropTypes.string,
     label: React.PropTypes.string,
     items: React.PropTypes.array,
+    text: React.PropTypes.string,
     value: React.PropTypes.oneOfType([
       React.PropTypes.string,
-      React.PropTypes.bool
+      React.PropTypes.bool,
+      React.PropTypes.object // dates for datepicker input type are objects
     ]),
     error: React.PropTypes.string,
-    type: React.PropTypes.string,
+    type: React.PropTypes.string.isRequired,
     placeholder: React.PropTypes.string,
     rows: React.PropTypes.number,
     disabled: React.PropTypes.bool,
@@ -44,7 +48,6 @@ var InputGroup = React.createClass({
     var message = this.renderMessage();
 
     return (
-      /* jshint ignore:start */
       <div className={className}>
         <div>
           {label}
@@ -52,7 +55,6 @@ var InputGroup = React.createClass({
         </div>
         {message}
       </div>
-      /* jshint ignore:end */
     );
   },
 
@@ -68,12 +70,10 @@ var InputGroup = React.createClass({
 
     if (text) {
       return (
-        /* jshint ignore:start */
         <label
           className="input-group-label"
           htmlFor={htmlFor}
           ref="label">{text}</label>
-        /* jshint ignore:end */
       );
     }
 
@@ -95,8 +95,15 @@ var InputGroup = React.createClass({
       return this.renderRadios();
     }
 
+    if (type === 'datepicker') {
+      return this.renderDatePicker();
+    }
+
+    if (type === 'explanation') {
+      return this.renderExplanation();
+    }
+
     return (
-      /* jshint ignore:start */
       <input
         type={type}
         className="input-group-control form-control"
@@ -107,14 +114,12 @@ var InputGroup = React.createClass({
         onChange={this.handleChange}
         disabled={this.props.disabled}
         ref="control"/>
-      /* jshint ignore:end */
     );
   },
 
   renderTextArea: function() {
     var rows = this.props.rows || this.DEFAULT_TEXTAREA_ROWS;
 
-    /* jshint ignore:start */
     return (
       <textarea
         className="input-group-control form-control"
@@ -127,13 +132,11 @@ var InputGroup = React.createClass({
         disabled={this.props.disabled}
         ref="control"></textarea>
     );
-    /* jshint ignore:end */
   },
 
   renderCheckbox: function() {
 
     return (
-      /* jshint ignore:start */
       <label
         className="input-group-checkbox-label"
         htmlFor={this.props.name}
@@ -150,7 +153,6 @@ var InputGroup = React.createClass({
         {' '}
         {this.props.label}
       </label>
-      /* jshint ignore:end */
     );
   },
 
@@ -159,7 +161,7 @@ var InputGroup = React.createClass({
     var radios = _.map(this.props.items, function(radio, index) {
       var id = self.props.name + index;
       var checked = (self.props.value === radio.value);
-      /* jshint ignore:start */
+
       return (
         <label
           className="input-group-radio-label"
@@ -180,27 +182,38 @@ var InputGroup = React.createClass({
           {radio.label}
         </label>
       );
-      /* jshint ignore:end */
     });
 
     return (
-      /* jshint ignore:start */
       <div className="input-group-radios">
         {radios}
       </div>
-      /* jshint ignore:end */
     );
+  },
+
+  renderDatePicker: function() {
+    return (
+      <DatePicker
+        name={this.props.name}
+        value={this.props.value}
+        disabled={this.props.disabled}
+        onChange={this.handleChange} />
+    );
+  },
+
+  renderExplanation: function() {
+    return <div className='input-group-explanation'>
+      {this.props.text}
+    </div>;
   },
 
   renderMessage: function() {
     var error = this.props.error;
     if (error) {
       return (
-        /* jshint ignore:start */
         <div
           className="input-group-message form-help-block"
           ref="message">{error}</div>
-        /* jshint ignore:end */
       );
     }
     return null;
@@ -215,7 +228,8 @@ var InputGroup = React.createClass({
   },
 
   handleChange: function(e) {
-    var target = e.target;
+    var target = e.target || e;
+
     var attributes = {
       name: target.name,
       value: target.value

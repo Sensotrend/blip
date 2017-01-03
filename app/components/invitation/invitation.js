@@ -1,4 +1,4 @@
-/** @jsx React.DOM */
+
 /**
  * Copyright (c) 2014, Tidepool Project
  *
@@ -15,37 +15,46 @@
  */
 var React = require('react');
 var _ = require('lodash');
-var cx = require('react/lib/cx');
+var utils = require('../../core/utils');
+var cx = require('classnames');
 
 var personUtils = require('../../core/personutils');
 
 var Invitation = React.createClass({
   propTypes: {
-    invitation: React.PropTypes.object,
-    patientsComponent: React.PropTypes.component,
-    onAcceptInvitation: React.PropTypes.func,
-    onDismissInvitation: React.PropTypes.func
+    invitation: React.PropTypes.object.isRequired,
+    onAcceptInvitation: React.PropTypes.func.isRequired,
+    onDismissInvitation: React.PropTypes.func.isRequired,
+    trackMetric: React.PropTypes.func.isRequired,
   },
   handleAccept: function() {
+    this.props.trackMetric('Clicked Join the Team');
     this.props.onAcceptInvitation(this.props.invitation);
   },
   handleDismiss: function() {
+    this.props.trackMetric('Clicked Ignore');
     this.props.onDismissInvitation(this.props.invitation);
   },
   render: function() {
-    var name = personUtils.patientFullName(this.props.invitation.creator);
+    var name = 'Not set';
+    if (utils.getIn(this.props, ['invitation', 'creator'])) {
+      name = personUtils.patientFullName(this.props.invitation.creator);
+    }
 
-    if (this.props.invitation.accepting) {
-      /* jshint ignore:start */
+    if (utils.getIn(this.props, ['invitation', 'accepting'])) {
       return (
         <li className='invitation'>
           <div className='invitation-message'>{'Joining ' + name + '\'s team...'}</div>
         </li>
       );
-      /* jshint ignore:end */
+      
     }
 
-    /* jshint ignore:start */
+    if (utils.getIn(this.props, ['trackMetric'])) {
+      this.props.trackMetric('Invite Displayed');
+    }
+
+    
     return (
       <li className='invitation'>
         <div className='invitation-message'>{'You have been invited to see ' + name + '\'s data!'}</div>
@@ -63,7 +72,7 @@ var Invitation = React.createClass({
         </div>
       </li>
     );
-    /* jshint ignore:end */
+    
   }
 });
 

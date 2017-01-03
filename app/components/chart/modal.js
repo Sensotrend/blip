@@ -1,35 +1,36 @@
-/** @jsx React.DOM */
-/* 
+/*
  * == BSD2 LICENSE ==
  * Copyright (c) 2014, Tidepool Project
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the associated License, which is identical to the BSD 2-Clause
  * License as published by the Open Source Initiative at opensource.org.
- * 
+ *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  * FOR A PARTICULAR PURPOSE. See the License for more details.
- * 
+ *
  * You should have received a copy of the License along with this program; if
  * not, you can obtain one from Tidepool Project at tidepool.org.
  * == BSD2 LICENSE ==
  */
 var _ = require('lodash');
 var bows = require('bows');
-var crossfilter = require('crossfilter');
 var d3 = window.d3;
 var React = require('react');
+var ReactDOM = require('react-dom');
 var sundial = require('sundial');
 
 var Header = require('./header');
 var SubNav = require('./modalsubnav');
 var Footer = require('./footer');
 
-// tideline dependencies & plugins
-var tidelineBlip = require('tideline/plugins/blip');
-var brush = tidelineBlip.modalday.brush;
-var modalDay = tidelineBlip.modalday.modalDay;
+import * as viz from '@tidepool/viz';
+const FocusedCBGSliceHTMLLabels = viz.components.FocusedCBGSliceHTMLLabels;
+const FocusedCBGSliceTime = viz.components.FocusedCBGSliceTime;
+const FocusedSMBGPointLabel = viz.components.FocusedSMBGPointLabel;
+const FocusedSMBGRangeLabels = viz.components.FocusedSMBGRangeLabels;
+const TrendsContainer = viz.containers.TrendsContainer;
 
 var Modal = React.createClass({
   chartType: 'modal',
@@ -37,10 +38,14 @@ var Modal = React.createClass({
   propTypes: {
     bgPrefs: React.PropTypes.object.isRequired,
     chartPrefs: React.PropTypes.object.isRequired,
+    currentPatientInViewId: React.PropTypes.string.isRequired,
+    timePrefs: React.PropTypes.object.isRequired,
     initialDatetimeLocation: React.PropTypes.string,
     patientData: React.PropTypes.object.isRequired,
+    trendsState: React.PropTypes.object.isRequired,
     // refresh handler
     onClickRefresh: React.PropTypes.func.isRequired,
+    onSwitchToBasics: React.PropTypes.func.isRequired,
     onSwitchToDaily: React.PropTypes.func.isRequired,
     onSwitchToModal: React.PropTypes.func.isRequired,
     onSwitchToSettings: React.PropTypes.func.isRequired,
@@ -58,50 +63,71 @@ var Modal = React.createClass({
       visibleDays: 0
     };
   },
+  componentDidMount: function() {
+    if (this.refs.chart) {
+      // necessary to get a ref from the redux connect()ed TrendsContainer
+      this.chart = this.refs.chart.getWrappedInstance();
+    }
+  },
   render: function() {
-    /* jshint ignore:start */
+    const { currentPatientInViewId } = this.props;
     return (
       <div id="tidelineMain">
-        {this.isMissingSMBG() ? this.renderMissingSMBGHeader() : this.renderHeader()}
-        {this.isMissingSMBG() ? null : this.renderSubNav()}
+        {this.renderHeader()}
+        {this.renderSubNav()}
         <div className="container-box-outer patient-data-content-outer">
           <div className="container-box-inner patient-data-content-inner">
             <div className="patient-data-content">
-              {this.isMissingSMBG() ? this.renderMissingSMBGMessage() : this.renderChart()}
+              <div id="tidelineContainer" className="patient-data-chart-modal">
+                {this.renderChart()}
+              </div>
+              {this.renderFocusedCBGTime()}
+              {this.renderFocusedCBGHTMLLabels()}
+              {this.renderFocusedSMBGPointLabel()}
+              {this.renderFocusedSMBGRangeLabels()}
             </div>
           </div>
         </div>
         <Footer
-         chartType={this.isMissingSMBG() ? 'no-data' : this.chartType}
+         chartType={this.chartType}
          onClickBoxOverlay={this.toggleBoxOverlay}
          onClickGroup={this.toggleGroup}
          onClickLines={this.toggleLines}
          onClickRefresh={this.props.onClickRefresh}
-         boxOverlay={this.props.chartPrefs.modal.boxOverlay}
-         grouped={this.props.chartPrefs.modal.grouped}
-         showingLines={this.props.chartPrefs.modal.showingLines}
-        ref="footer" />
+         onClickBgDataToggle={this.toggleBgDataSource}
+         boxOverlay={this.props.chartPrefs.modal.smbgRangeOverlay}
+         grouped={this.props.chartPrefs.modal.smbgGrouped}
+         showingLines={this.props.chartPrefs.modal.smbgLines}
+         showingCbg={this.props.chartPrefs.modal.showingCbg}
+         showingSmbg={this.props.chartPrefs.modal.showingSmbg}
+         displayFlags={this.props.trendsState[currentPatientInViewId].cbgFlags}
+         currentPatientInViewId={currentPatientInViewId}
+         ref="footer" />
       </div>
-      );
-    /* jshint ignore:end */
+    );
   },
   renderHeader: function() {
-    /* jshint ignore:start */
     return (
       <Header
         chartType={this.chartType}
-        atMostRecent={this.state.atMostRecent}
         inTransition={this.state.inTransition}
+        atMostRecent={this.state.atMostRecent}
         title={this.state.title}
+        iconBack={'icon-back'}
+        iconNext={'icon-next'}
+        iconMostRecent={'icon-most-recent'}
+        onClickBack={this.handleClickBack}
+        onClickBasics={this.props.onSwitchToBasics}
         onClickModal={this.handleClickModal}
+        onClickMostRecent={this.handleClickMostRecent}
+        onClickNext={this.handleClickForward}
         onClickOneDay={this.handleClickDaily}
         onClickTwoWeeks={this.handleClickWeekly}
         onClickSettings={this.handleClickSettings}
       ref="header" />
-      );
+    );
   },
   renderSubNav: function() {
-    /* jshint ignore:start */
     return (
       <SubNav
        activeDays={this.props.chartPrefs.modal.activeDays}
@@ -115,33 +141,92 @@ var Modal = React.createClass({
        onClickDay={this.toggleDay}
        toggleWeekdays={this.toggleWeekdays}
        toggleWeekends={this.toggleWeekends}
-       ref="subnav" />
-      );
-    /* jshint ignore:end */
+      ref="subnav" />
+    );
   },
   renderChart: function() {
-    /* jshint ignore:start */
+    const { bgPrefs: { bgClasses, bgUnits } } = this.props;
+    let bgBounds = {
+      veryHighThreshold: bgClasses.high.boundary,
+      targetUpperBound: bgClasses.target.boundary,
+      targetLowerBound: bgClasses.low.boundary,
+      veryLowThreshold: bgClasses['very-low'].boundary,
+    };
     return (
-      <ModalChart
+      <TrendsContainer
         activeDays={this.props.chartPrefs.modal.activeDays}
-        bgClasses={this.props.bgPrefs.bgClasses}
+        bgBounds={bgBounds}
         bgUnits={this.props.bgPrefs.bgUnits}
+        currentPatientInViewId={this.props.currentPatientInViewId}
         extentSize={this.props.chartPrefs.modal.extentSize}
         initialDatetimeLocation={this.props.initialDatetimeLocation}
-        patientData={this.props.patientData}
-        boxOverlay={this.props.chartPrefs.modal.boxOverlay}
-        grouped={this.props.chartPrefs.modal.grouped}
-        showingLines={this.props.chartPrefs.modal.showingLines}
-        timePrefs={this.props.chartPrefs.timePrefs}
+        showingSmbg={this.props.chartPrefs.modal.showingSmbg}
+        showingCbg={this.props.chartPrefs.modal.showingCbg}
+        smbgRangeOverlay={this.props.chartPrefs.modal.smbgRangeOverlay}
+        smbgGrouped={this.props.chartPrefs.modal.smbgGrouped}
+        smbgLines={this.props.chartPrefs.modal.smbgLines}
+        timePrefs={this.props.timePrefs}
+        // data
+        cbgByDate={this.props.patientData.cbgByDate}
+        cbgByDayOfWeek={this.props.patientData.cbgByDayOfWeek}
+        smbgByDate={this.props.patientData.smbgByDate}
+        smbgByDayOfWeek={this.props.patientData.smbgByDayOfWeek}
         // handlers
         onDatetimeLocationChange={this.handleDatetimeLocationChange}
         onSelectDay={this.handleSelectDay}
-        ref="chart" />
-      );
-    /* jshint ignore:end */
+        onSwitchBgDataSource={this.toggleBgDataSource}
+      ref="chart" />
+    );
+  },
+  renderFocusedCBGHTMLLabels: function() {
+    if (!this.props.chartPrefs.modal.showingCbg) {
+      return null;
+    }
+    const { currentPatientInViewId } = this.props;
+    return (
+      <FocusedCBGSliceHTMLLabels
+        bgUnits={this.props.bgPrefs.bgUnits}
+        focusedKeys={this.props.trendsState[currentPatientInViewId].focusedCbgSliceKeys}
+        focusedSlice={this.props.trendsState[currentPatientInViewId].focusedCbgSlice} />
+    );
+  },
+  renderFocusedCBGTime: function() {
+    if (!this.props.chartPrefs.modal.showingCbg) {
+      return null;
+    }
+    const { currentPatientInViewId } = this.props;
+    return (
+      <FocusedCBGSliceTime
+        focusedSlice={this.props.trendsState[currentPatientInViewId].focusedCbgSlice} />
+    );
+  },
+  renderFocusedSMBGPointLabel: function() {
+    if (!this.props.chartPrefs.modal.showingSmbg) {
+      return null;
+    }
+    const { currentPatientInViewId } = this.props;
+    return (
+      <FocusedSMBGPointLabel
+        bgUnits={this.props.bgPrefs.bgUnits}
+        timePrefs={this.props.timePrefs}
+        grouped={this.props.chartPrefs.modal.smbgGrouped}
+        lines={this.props.chartPrefs.modal.smbgLines}
+        focusedPoint={this.props.trendsState[currentPatientInViewId].focusedSmbg} />
+    );
+  },
+  renderFocusedSMBGRangeLabels: function() {
+    if (!this.props.chartPrefs.modal.showingSmbg) {
+      return null;
+    }
+    const { currentPatientInViewId } = this.props;
+    return (
+      <FocusedSMBGRangeLabels
+        bgUnits={this.props.bgPrefs.bgUnits}
+        timePrefs={this.props.timePrefs}
+        focusedRange={this.props.trendsState[currentPatientInViewId].focusedSmbgRangeAvg} />
+    );
   },
   renderMissingSMBGHeader: function() {
-    /* jshint ignore:start */
     return (
       <Header
         chartType={this.chartType}
@@ -153,40 +238,16 @@ var Modal = React.createClass({
         onClickTwoWeeks={this.handleClickWeekly}
       ref="header" />
     );
-    /* jshint ignore:end */
-  },
-  renderMissingSMBGMessage: function() {
-    var self = this;
-    var handleClickUpload = function() {
-      self.props.trackMetric('Clicked Partial Data Upload, No SMBG');
-    };
-    /* jshint ignore:start */
-    return (
-      <div className="patient-data-message patient-data-message-loading">
-        <p>{'It looks like you don\'t have any BG meter data yet!'}</p>
-        <p>{'To see all your data together, please '}
-          <a
-            href={this.props.uploadUrl}
-            target="_blank"
-            onClick={handleClickUpload}>upload</a>
-          {' your insulin pump data and CGM data at the same time.'}</p>
-        <p>{'Or if you already have, try '}
-          <a href="" onClick={this.props.onClickRefresh}>refreshing</a>
-          {'.'}
-        </p>
-      </div>
-    );
-    /* jshint ignore:end */
   },
   formatDate: function(datetime) {
-    var timePrefs = this.props.chartPrefs.timePrefs, timezone;
+    var timePrefs = this.props.timePrefs, timezone;
     if (!timePrefs.timezoneAware) {
       timezone = 'UTC';
     }
     else {
       timezone = timePrefs.timezoneName || 'UTC';
     }
-    return sundial.formatInTimezone(datetime, timezone, 'MMMM Do');
+    return sundial.formatInTimezone(datetime, timezone, 'MMM D, YYYY');
   },
   getTitle: function(datetimeLocationEndpoints) {
     // endpoint is exclusive, so need to subtract a day
@@ -194,7 +255,7 @@ var Modal = React.createClass({
     return this.formatDate(datetimeLocationEndpoints[0]) + ' - ' + this.formatDate(end);
   },
   getNewDomain: function(current, extent) {
-    var timePrefs = this.props.chartPrefs.timePrefs, timezone;
+    var timePrefs = this.props.timePrefs, timezone;
     if (!timePrefs.timezoneAware) {
       timezone = 'UTC';
     }
@@ -202,14 +263,7 @@ var Modal = React.createClass({
       timezone = timePrefs.timezoneName || 'UTC';
     }
     current = sundial.ceil(current, 'day', timezone);
-    return [d3.time.day.utc.offset(current, -extent), current];
-  },
-  isMissingSMBG: function() {
-    var data = this.props.patientData;
-    if (_.isEmpty(data.grouped.smbg)) {
-      return true;
-    }
-    return false;
+    return [d3.time.day.utc.offset(current, -extent).toISOString(), current.toISOString()];
   },
   updateVisibleDays: function() {
     this.setState({
@@ -217,11 +271,35 @@ var Modal = React.createClass({
     });
   },
   // handlers
+  handleClickBack: function(e) {
+    if (e) {
+      e.preventDefault();
+    }
+    this.chart.goBack();
+  },
+  handleClickForward: function(e) {
+    if (e) {
+      e.preventDefault();
+    }
+    if (this.state.atMostRecent) {
+      return;
+    }
+    this.chart.goForward();
+  },
+  handleClickMostRecent: function(e) {
+    if (e) {
+      e.preventDefault();
+    }
+    if (this.state.atMostRecent) {
+      return;
+    }
+    this.chart.goToMostRecent();
+  },
   handleClickDaily: function(e) {
     if (e) {
       e.preventDefault();
     }
-    var datetime = this.refs.chart ? this.refs.chart.getCurrentDay() : this.props.initialDatetimeLocation;
+    var datetime = this.chart ? this.chart.getCurrentDay() : this.props.initialDatetimeLocation;
     this.props.onSwitchToDaily(datetime);
   },
   handleClickModal: function(e) {
@@ -236,42 +314,54 @@ var Modal = React.createClass({
       e.preventDefault();
     }
     var prefs = _.cloneDeep(this.props.chartPrefs);
+    // no change, return early
+    if (prefs.activeDomain === '1 week' && prefs.extentSize === 7) {
+      return;
+    }
     prefs.modal.activeDomain = '1 week';
     prefs.modal.extentSize = 7;
-    var current = new Date(this.refs.chart.getCurrentDay());
+    this.props.updateChartPrefs(prefs);
+    var current = new Date(this.chart.getCurrentDay());
     var newDomain = this.getNewDomain(current, 7);
-    this.refs.chart.setExtent(newDomain);
-    this.handleDatetimeLocationChange(newDomain, prefs);
+    this.chart.setExtent(newDomain);
   },
   handleClickTwoWeeks: function(e) {
     if (e) {
       e.preventDefault();
     }
     var prefs = _.cloneDeep(this.props.chartPrefs);
+    // no change, return early
+    if (prefs.activeDomain === '2 weeks' && prefs.extentSize === 14) {
+      return;
+    }
     prefs.modal.activeDomain = '2 weeks';
     prefs.modal.extentSize = 14;
-    var current = new Date(this.refs.chart.getCurrentDay());
+    this.props.updateChartPrefs(prefs);
+    var current = new Date(this.chart.getCurrentDay());
     var newDomain = this.getNewDomain(current, 14);
-    this.refs.chart.setExtent(newDomain);
-    this.handleDatetimeLocationChange(newDomain, prefs);
+    this.chart.setExtent(newDomain);
   },
   handleClickFourWeeks: function(e) {
     if (e) {
       e.preventDefault();
     }
     var prefs = _.cloneDeep(this.props.chartPrefs);
+    // no change, return early
+    if (prefs.activeDomain === '4 weeks' && prefs.extentSize === 28) {
+      return;
+    }
     prefs.modal.activeDomain = '4 weeks';
     prefs.modal.extentSize = 28;
-    var current = new Date(this.refs.chart.getCurrentDay());
+    this.props.updateChartPrefs(prefs);
+    var current = new Date(this.chart.getCurrentDay());
     var newDomain = this.getNewDomain(current, 28);
-    this.refs.chart.setExtent(newDomain);
-    this.handleDatetimeLocationChange(newDomain, prefs);
+    this.chart.setExtent(newDomain);
   },
   handleClickWeekly: function(e) {
     if (e) {
       e.preventDefault();
     }
-    var datetime = this.refs.chart ? this.refs.chart.getCurrentDay() : this.props.initialDatetimeLocation;
+    var datetime = this.chart ? this.chart.getCurrentDay() : this.props.initialDatetimeLocation;
     this.props.onSwitchToWeekly(datetime);
   },
   handleClickSettings: function(e) {
@@ -280,15 +370,13 @@ var Modal = React.createClass({
     }
     this.props.onSwitchToSettings();
   },
-  handleDatetimeLocationChange: function(datetimeLocationEndpoints, prefs) {
+  handleDatetimeLocationChange: function(datetimeLocationEndpoints, atMostRecent) {
     if (this.isMounted()) {
       this.setState({
+        atMostRecent: atMostRecent,
         title: this.getTitle(datetimeLocationEndpoints)
       });
-      prefs = prefs || _.cloneDeep(this.props.chartPrefs);
-      prefs.modal.extentSize = (Date.parse(datetimeLocationEndpoints[1]) - Date.parse(datetimeLocationEndpoints[0]))/864e5;
-      this.props.updateChartPrefs(prefs);
-      this.props.updateDatetimeLocation(this.refs.chart.getCurrentDay());
+      this.props.updateDatetimeLocation(datetimeLocationEndpoints[1]);
     }
   },
   handleSelectDay: function(date) {
@@ -303,28 +391,33 @@ var Modal = React.createClass({
       self.props.updateChartPrefs(prefs);
     };
   },
-  toggleBoxOverlay: function(e) {
+  toggleBgDataSource: function(e) {
     if (e) {
       e.preventDefault();
+      if (this.props.chartPrefs.modal.showingCbg) {
+        this.props.trackMetric('Trends Click to BGM');
+      } else {
+        this.props.trackMetric('Trends Click to CGM');
+      }
     }
     var prefs = _.cloneDeep(this.props.chartPrefs);
-    prefs.modal.boxOverlay = prefs.modal.boxOverlay ? false : true;
+    prefs.modal.showingCbg = !prefs.modal.showingCbg;
+    prefs.modal.showingSmbg = !prefs.modal.showingSmbg;
+    this.props.updateChartPrefs(prefs);
+  },
+  toggleBoxOverlay: function(e) {
+    var prefs = _.cloneDeep(this.props.chartPrefs);
+    prefs.modal.smbgRangeOverlay = prefs.modal.smbgRangeOverlay ? false : true;
     this.props.updateChartPrefs(prefs);
   },
   toggleGroup: function(e) {
-    if (e) {
-      e.preventDefault();
-    }
     var prefs = _.cloneDeep(this.props.chartPrefs);
-    prefs.modal.grouped = prefs.modal.grouped ? false : true;
+    prefs.modal.smbgGrouped = prefs.modal.smbgGrouped ? false : true;
     this.props.updateChartPrefs(prefs);
   },
   toggleLines: function(e) {
-    if (e) {
-      e.preventDefault();
-    }
     var prefs = _.cloneDeep(this.props.chartPrefs);
-    prefs.modal.showingLines = prefs.modal.showingLines ? false : true;
+    prefs.modal.smbgLines = prefs.modal.smbgLines ? false : true;
     this.props.updateChartPrefs(prefs);
   },
   toggleWeekdays: function(allActive) {
@@ -352,171 +445,6 @@ var Modal = React.createClass({
       'sunday': !allActive
     };
     this.props.updateChartPrefs(prefs);
-  }
-});
-
-var ModalChart = React.createClass({
-  chartOpts: ['bgClasses', 'bgUnits', 'boxOverlay', 'grouped', 'showingLines'],
-  log: bows('Modal Chart'),
-  propTypes: {
-    activeDays: React.PropTypes.object.isRequired,
-    bgClasses: React.PropTypes.object.isRequired,
-    bgUnits: React.PropTypes.string.isRequired,
-    extentSize: React.PropTypes.number.isRequired,
-    initialDatetimeLocation: React.PropTypes.string,
-    patientData: React.PropTypes.object.isRequired,
-    boxOverlay: React.PropTypes.bool.isRequired,
-    grouped: React.PropTypes.bool.isRequired,
-    showingLines: React.PropTypes.bool.isRequired,
-    timePrefs: React.PropTypes.object.isRequired,
-    // handlers
-    onDatetimeLocationChange: React.PropTypes.func.isRequired,
-    onSelectDay: React.PropTypes.func.isRequired
-  },
-  componentWillMount: function() {
-    console.time('Modal Pre-Mount');
-    var timezone;
-    if (!this.props.timePrefs.timezoneAware) {
-      timezone = 'UTC';
-    }
-    else {
-      timezone = this.props.timePrefs.timezoneName || 'UTC';
-    }
-    var data = this.props.patientData;
-    this.filterData = data.filterData;
-    this.dataByDate = data.smbgByDate.filterAll();
-    this.dataByDayOfWeek = data.smbgByDayOfWeek.filterAll();
-    this.allData = this.dataByDate.top(Infinity);
-    var activeDays = this.props.activeDays;
-    this.dataByDayOfWeek.filterFunction(function(d) {
-      return activeDays[d];
-    });
-    var domain = d3.extent(this.allData, function(d) { return d.normalTime; });
-    // extend the domain to 28 days if existing data is less than that
-    if (Math.floor((Date.parse(domain[1]) - Date.parse(domain[0]))/864e5) < 28) {
-      domain[0] = d3.time.day.utc.offset(Date.parse(domain[1]), -28).toISOString();
-    }
-    this.dataByDate.filter(this.getInitialExtent(domain));
-    this.setState({
-      bgDomain: d3.extent(this.allData, function(d) { return d.value; }),
-      dateDomain: domain
-    });
-    console.timeEnd('Modal Pre-Mount');
-  },
-  componentDidMount: function() {
-    this.log('Mounting...');
-    var el = this.getDOMNode();
-    var timezone;
-    if (!this.props.timePrefs.timezoneAware) {
-      timezone = 'UTC';
-    }
-    else {
-      timezone = this.props.timePrefs.timezoneName || 'UTC';
-    }
-    this.chart = modalDay.create(el, {
-      bgClasses: this.props.bgClasses,
-      bgDomain: this.state.bgDomain,
-      clampTop: true,
-      timezone: timezone
-    });
-    console.time('Modal Draw');
-    this.chart.render(this.dataByDate.top(Infinity), _.pick(this.props, this.chartOpts));
-    var domain = this.state.dateDomain;
-    var extent = this.getInitialExtent(domain);
-    this.brush = brush.create(document.getElementById('modalScroll'), domain, {
-      initialExtent: extent,
-      timezone: timezone
-    });
-    this.bindEvents();
-    this.brush.emitter.emit('brushed', extent);
-    this.brush.render(this.allData);
-    console.timeEnd('Modal Draw');
-  },
-  componentWillReceiveProps: function(nextProps) {
-    // refilter by active days if necessary
-    var activeDays = nextProps.activeDays;
-    if (!_.isEqual(this.props.activeDays, activeDays)) {
-      this.dataByDayOfWeek.filterFunction(function(d) {
-        return activeDays[d];
-      });
-    }
-    // refilter by time if necessary
-    if (this.props.extentSize !== nextProps.extentSize) {
-      var current = this.getCurrentDay();
-      this.dataByDate.filter([
-        // not quite sure why I have to reduce the extent by one here...
-        d3.time.day.utc.offset(new Date(current), -(nextProps.extentSize - 1)).toISOString(),
-        current
-      ]);
-    }
-  },
-  componentDidUpdate: function() {
-    var data = this.dataByDate.top(Infinity).reverse();
-    this.chart.render(data, _.pick(this.props, this.chartOpts));
-  },
-  componentWillUnmount: function() {
-    this.log('Unmounting...');
-    this.clearAllFilters();
-    this.chart.destroy();
-    this.brush.destroy();
-  },
-  bindEvents: function() {
-    this.brush.emitter.on('brushed', this.handleDatetimeLocationChange);
-    this.chart.emitter.on('selectDay', this.props.onSelectDay);
-  },
-  render: function() {
-    /* jshint ignore:start */
-    return (
-      <div id="tidelineContainer" className="patient-data-chart-modal"></div>
-      );
-    /* jshint ignore:end */
-  },
-  clearAllFilters: function() {
-    this.dataByDate.filterAll();
-    this.dataByDayOfWeek.filterAll();
-  },
-  getCurrentDay: function() {
-    return this.brush.getCurrentDay().toISOString();
-  },
-  getInitialExtent: function(domain) {
-    var timePrefs = this.props.timePrefs, timezone;
-    if (!timePrefs.timezoneAware) {
-      timezone = 'UTC';
-    }
-    else {
-      timezone = timePrefs.timezoneName || 'UTC';
-    }
-
-    var extentSize = this.props.extentSize, extentBasis;
-    // only use passed in initialDatetimeLocation as extentBasis if it doesn't
-    // go past the domain of available smbg data
-    if (this.props.initialDatetimeLocation && this.props.initialDatetimeLocation < domain[1]) {
-      extentBasis = this.props.initialDatetimeLocation;
-    }
-    else {
-      extentBasis = domain[1];
-    }
-    // startOf('day') followed by add(1, 'days') is equivalent to d3's d3.time.day.ceil
-    // but we can't use that when dealing with arbitrary timezones :(
-    extentBasis = sundial.ceil(extentBasis, 'day', timezone);
-    var start = d3.time.day.utc.offset(extentBasis, -extentSize);
-    if (start.toISOString() < domain[0]) {
-      start = sundial.floor(domain[0], 'day', timezone);
-      extentBasis = d3.time.day.utc.offset(start, extentSize);
-    }
-    return [
-      start.toISOString(),
-      extentBasis.toISOString()
-    ];
-  },
-  setExtent: function(domain) {
-    this.brush.setExtent(domain);
-  },
-  // handlers
-  handleDatetimeLocationChange: function(datetimeLocationEndpoints) {
-    this.dataByDate.filter(datetimeLocationEndpoints);
-    this.chart.render(this.dataByDate.top(Infinity), _.pick(this.props, this.chartOpts));
-    this.props.onDatetimeLocationChange(datetimeLocationEndpoints);
   }
 });
 
